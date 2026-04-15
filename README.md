@@ -1,58 +1,81 @@
 # cs-taihuan
 
-基于 BUFF 账号库存数据，自动筛选更优的 CS 汰换方案。当前实现为 `Java 8 + Maven` 项目。
+基于 BUFF 账号库存数据，自动筛选更优的 CS 汰换方案。当前实现为 `Spring Boot + Maven + Java 8` 项目。
 
 ## 当前能力
 
-1. 读取 `BUFF_COOKIE`，分页拉取 BUFF 库存数据。
-2. 将库存标准化为 JSON 文件，方便留档和二次分析。
-3. 读取本地 `catalog` 元数据，补齐收藏品、品质、磨损范围和目标售价。
-4. 自动枚举 10 连汰换合同，按手续费后期望利润排序输出最优方案。
+1. 通过 `application.yml` 读取 BUFF 基础配置和 Cookie。
+2. 提供 REST API 抓取 BUFF 库存并输出标准化 JSON。
+3. 读取本地 `catalog` 元数据，自动计算最优汰换方案。
+4. 按手续费后期望利润排序返回候选合同。
 
-## 目录结构
+## 项目结构
 
 ```text
 src/main/java/com/qyaaaa/cstaihuan
+  ├── config
+  ├── controller
+  ├── dto
+  ├── model
+  └── service
+src/main/resources
+  └── application.yml
 ```
 
-## 快速开始
+## 配置
 
-如果本机有 Maven：
+在 [src/main/resources/application.yml](/Users/qiaoyu/project/cs-taihuan/src/main/resources/application.yml) 中配置：
 
-```bash
-mvn compile
+```yml
+buff:
+  base-url: https://buff.163.com
+  cookie: ${BUFF_COOKIE:}
+  game: csgo
+  page-size: 80
+trade-up:
+  sale-fee-rate: 0.025
+  max-items-per-rarity: 18
+  max-combinations: 25000
 ```
 
-运行前准备 Cookie：
+建议仍然把 Cookie 放环境变量里：
 
 ```bash
 export BUFF_COOKIE='session=...; csrf_token=...'
 ```
 
-抓取库存：
+## 启动
 
 ```bash
-mvn exec:java -Dexec.args="fetch --game csgo --output data/buff_inventory.json"
+mvn spring-boot:run
 ```
 
-运行汰换优化：
+默认接口：
+
+- `POST /api/buff/inventory/fetch`
+- `POST /api/trade-up/optimize`
+
+### 抓取库存
 
 ```bash
-mvn exec:java -Dexec.args="optimize --inventory data/buff_inventory.json --catalog examples/catalog.sample.json --top-k 5"
+curl -X POST http://localhost:8080/api/buff/inventory/fetch \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "outputPath": "data/buff_inventory.json",
+    "game": "csgo"
+  }'
 ```
 
-一键执行：
+### 计算汰换
 
 ```bash
-mvn exec:java -Dexec.args="run --game csgo --output data/buff_inventory.json --catalog examples/catalog.sample.json"
-```
-
-本地没有 Maven 也可以直接编译运行：
-
-```bash
-mkdir -p out
-javac --release 8 -d out $(find src/main/java -name '*.java')
-java -cp out com.qyaaaa.cstaihuan.Main optimize --inventory examples/inventory.sample.json --catalog examples/catalog.sample.json --top-k 3
+curl -X POST http://localhost:8080/api/trade-up/optimize \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "inventoryPath": "examples/inventory.sample.json",
+    "catalogPath": "examples/catalog.sample.json",
+    "topK": 3
+  }'
 ```
 
 ## Catalog 格式
@@ -70,6 +93,6 @@ java -cp out com.qyaaaa.cstaihuan.Main optimize --inventory examples/inventory.s
 
 ## 注意事项
 
-- BUFF 接口可能会调整字段结构，首次接入建议先跑一次 `fetch` 检查落盘 JSON。
-- 若 `catalog` 缺少饰品信息，该饰品会在优化时被跳过。
+- BUFF 接口可能调整字段结构，首次接入建议先调用抓取接口检查输出内容。
+- Cookie 过期后需要重新从浏览器复制登录态。
 - 当前优化目标是“手续费后期望利润最大化”，不是“爆金概率最大化”。

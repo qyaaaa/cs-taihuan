@@ -1,14 +1,19 @@
 package com.qyaaaa.cstaihuan.model;
 
-import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class CatalogSkin {
-    private final String name;
-    private final String collection;
-    private final String rarity;
-    private final double minFloat;
-    private final double maxFloat;
-    private final double price;
+public class CatalogSkin {
+    private String name;
+    private String collection;
+    private String rarity;
+    @JsonProperty("min_float")
+    private double minFloat;
+    @JsonProperty("max_float")
+    private double maxFloat;
+    private double price;
+
+    public CatalogSkin() {
+    }
 
     public CatalogSkin(String name, String collection, String rarity, double minFloat, double maxFloat, double price) {
         this.name = name;
@@ -17,17 +22,6 @@ public final class CatalogSkin {
         this.minFloat = minFloat;
         this.maxFloat = maxFloat;
         this.price = price;
-    }
-
-    public static CatalogSkin fromMap(Map<String, Object> payload) {
-        return new CatalogSkin(
-            String.valueOf(payload.get("name")),
-            String.valueOf(payload.get("collection")),
-            String.valueOf(payload.get("rarity")).trim().toLowerCase(),
-            doubleValue(payload.get("min_float"), 0.0d),
-            doubleValue(payload.get("max_float"), 1.0d),
-            doubleValue(payload.get("price"), 0.0d)
-        );
     }
 
     public String getName() {
@@ -42,20 +36,39 @@ public final class CatalogSkin {
         return rarity;
     }
 
+    public void setRarity(String rarity) {
+        this.rarity = rarity == null ? null : rarity.trim().toLowerCase();
+    }
+
     public double getMinFloat() {
         return minFloat;
+    }
+
+    public void setMinFloat(double minFloat) {
+        this.minFloat = minFloat;
     }
 
     public double getMaxFloat() {
         return maxFloat;
     }
 
+    public void setMaxFloat(double maxFloat) {
+        this.maxFloat = maxFloat;
+    }
+
     public double getPrice() {
         return price;
     }
 
-    private static double doubleValue(Object value, double defaultValue) {
-        return value == null ? defaultValue : Double.parseDouble(String.valueOf(value));
+    public void setPrice(double price) {
+        this.price = price;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setCollection(String collection) {
+        this.collection = collection;
     }
 }
-

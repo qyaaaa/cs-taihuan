@@ -1,36 +1,32 @@
-package com.qyaaaa.cstaihuan;
+package com.qyaaaa.cstaihuan.service;
 
-import com.qyaaaa.cstaihuan.json.Json;
 import com.qyaaaa.cstaihuan.model.BuffItem;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
-public final class BuffClient {
-    private final String cookie;
-    private final String baseUrl;
-    private final int timeoutMillis;
+@Component
+public class BuffApiClient {
+    private final RestTemplate restTemplate;
 
-    public BuffClient(String cookie, String baseUrl, int timeoutMillis) {
-        this.cookie = cookie;
-        this.baseUrl = baseUrl;
-        this.timeoutMillis = timeoutMillis;
+    public BuffApiClient(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
     }
 
-    public List<BuffItem> fetchInventory(String game, int pageSize, Integer maxPages) throws IOException {
+    public List<BuffItem> fetchInventory(String baseUrl, String cookie, String game, int pageSize, Integer maxPages) {
         List<BuffItem> items = new ArrayList<BuffItem>();
         int page = 1;
         while (true) {
-            Map<String, Object> payload = get("/api/market/steam_inventory", game, page, pageSize);
+            Map<String, Object> payload = request(baseUrl, cookie, game, page, pageSize);
             List<BuffItem> pageItems = extractItems(payload);
             if (pageItems.isEmpty()) {
                 break;
@@ -47,39 +43,26 @@ public final class BuffClient {
         return items;
     }
 
-    private Map<String, Object> get(String path, String game, int page, int pageSize) throws IOException {
-        String query = "game=" + encode(game) + "&page_num=" + page + "&page_size=" + pageSize;
-        URL url = new URL(baseUrl + path + "?" + query);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(timeoutMillis);
-        connection.setReadTimeout(timeoutMillis);
-        connection.setRequestProperty("Cookie", cookie);
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0 Java8 cs-taihuan");
-        connection.setRequestProperty("Accept", "application/json, text/plain, */*");
-        connection.setRequestProperty("Referer", baseUrl + "/market/csgo");
-        connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+    private Map<String, Object> request(String baseUrl, String cookie, String game, int page, int pageSize) {
+        String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/steam_inventory")
+            .queryParam("game", game)
+            .queryParam("page_num", page)
+            .queryParam("page_size", pageSize)
+            .toUriString();
 
-        int status = connection.getResponseCode();
-        InputStream stream = status >= 200 && status < 300
-            ? connection.getInputStream()
-            : connection.getErrorStream();
-        String body = readAll(stream);
-        if (status < 200 || status >= 300) {
-            throw new IOException("BUFF API request failed: HTTP " + status + " body=" + body);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.COOKIE, cookie);
+        headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 SpringBoot cs-taihuan");
+        headers.set(HttpHeaders.REFERER, baseUrl + "/market/csgo");
+        headers.set("X-Requested-With", "XMLHttpRequest");
+        headers.setAccept(MediaType.parseMediaTypes("application/json, text/plain, */*"));
+
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new IllegalStateException("BUFF API request failed: " + response.getStatusCode());
         }
-
-        Object parsed = Json.parse(body);
-        if (!(parsed instanceof Map)) {
-            throw new IOException("Unexpected BUFF response: " + body);
-        }
-
         @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) parsed;
-        Object code = payload.get("code");
-        if (code != null && !"OK".equals(String.valueOf(code)) && payload.get("data") == null) {
-            throw new IOException("BUFF API returned unexpected payload: " + body);
-        }
+        Map<String, Object> payload = response.getBody();
         return payload;
     }
 
@@ -88,16 +71,10 @@ public final class BuffClient {
         if (!(dataObj instanceof Map)) {
             return new ArrayList<BuffItem>();
         }
+
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) dataObj;
-
-        Object[] sources = new Object[] {
-            data.get("items"),
-            data.get("inventory"),
-            data.get("goods_infos"),
-            payload.get("items")
-        };
-
+        Object[] sources = new Object[] {data.get("items"), data.get("inventory"), data.get("goods_infos"), payload.get("items")};
         List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
         for (Object source : sources) {
             if (source instanceof List) {
@@ -177,23 +154,6 @@ public final class BuffClient {
             }
         }
         return false;
-    }
-
-    private static String encode(String value) throws IOException {
-        return URLEncoder.encode(value, "UTF-8");
-    }
-
-    private static String readAll(InputStream stream) throws IOException {
-        if (stream == null) {
-            return "";
-        }
-        BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
-        StringBuilder builder = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            builder.append(line);
-        }
-        return builder.toString();
     }
 
     private static Map<String, Object> mapValue(Object value) {

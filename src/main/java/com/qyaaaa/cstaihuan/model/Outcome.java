@@ -1,10 +1,13 @@
 package com.qyaaaa.cstaihuan.model;
 
-public final class Outcome {
-    private final CatalogSkin skin;
-    private final double probability;
-    private final double estimatedFloat;
-    private final double estimatedSalePrice;
+public class Outcome {
+    private CatalogSkin skin;
+    private double probability;
+    private double estimatedFloat;
+    private double estimatedSalePrice;
+
+    public Outcome() {
+    }
 
     public Outcome(CatalogSkin skin, double probability, double estimatedFloat, double estimatedSalePrice) {
         this.skin = skin;
@@ -28,5 +31,20 @@ public final class Outcome {
     public double getEstimatedSalePrice() {
         return estimatedSalePrice;
     }
-}
 
+    public void setSkin(CatalogSkin skin) {
+        this.skin = skin;
+    }
+
+    public void setProbability(double probability) {
+        this.probability = probability;
+    }
+
+    public void setEstimatedFloat(double estimatedFloat) {
+        this.estimatedFloat = estimatedFloat;
+    }
+
+    public void setEstimatedSalePrice(double estimatedSalePrice) {
+        this.estimatedSalePrice = estimatedSalePrice;
+    }
+}
