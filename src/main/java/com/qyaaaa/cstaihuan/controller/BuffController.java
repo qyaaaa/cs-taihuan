@@ -1,7 +1,8 @@
 package com.qyaaaa.cstaihuan.controller;
 
 import com.qyaaaa.cstaihuan.dto.FetchInventoryRequest;
-import com.qyaaaa.cstaihuan.dto.FetchInventoryResponse;
+import com.qyaaaa.cstaihuan.dto.InventorySnapshotRequest;
+import com.qyaaaa.cstaihuan.dto.InventorySnapshotResponse;
 import com.qyaaaa.cstaihuan.service.BuffInventoryService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,8 +19,12 @@ public class BuffController {
     }
 
     @PostMapping("/fetch")
-    public FetchInventoryResponse fetch(@RequestBody FetchInventoryRequest request) throws Exception {
+    public InventorySnapshotResponse fetch(@RequestBody FetchInventoryRequest request) throws Exception {
         return buffInventoryService.fetchAndSave(request);
     }
-}
 
+    @PostMapping("/load")
+    public InventorySnapshotResponse load(@RequestBody InventorySnapshotRequest request) throws Exception {
+        return buffInventoryService.loadFromFile(request);
+    }
+}

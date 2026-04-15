@@ -8,6 +8,7 @@
 2. 提供 REST API 抓取 BUFF 库存并输出标准化 JSON。
 3. 读取本地 `catalog` 元数据，自动计算最优汰换方案。
 4. 按手续费后期望利润排序返回候选合同。
+5. 内置 `Vue 3 + Element Plus` 前端工作台，展示库存看板和 EV 推荐方案。
 
 ## 项目结构
 
@@ -19,7 +20,8 @@ src/main/java/com/qyaaaa/cstaihuan
   ├── model
   └── service
 src/main/resources
-  └── application.yml
+  ├── application.yml
+  └── static
 ```
 
 ## 配置
@@ -53,7 +55,12 @@ mvn spring-boot:run
 默认接口：
 
 - `POST /api/buff/inventory/fetch`
+- `POST /api/buff/inventory/load`
 - `POST /api/trade-up/optimize`
+
+前端页面：
+
+- `GET /`
 
 ### 抓取库存
 
@@ -77,6 +84,13 @@ curl -X POST http://localhost:8080/api/trade-up/optimize \
     "topK": 3
   }'
 ```
+
+### 使用前端控制台
+
+启动后直接访问 [http://localhost:8080](http://localhost:8080)，页面包含：
+
+- 库存看板：支持列表/卡片切换，展示当前炼金素材
+- 方案列表：按 EV 降序排列推荐方案，点击右侧查看详情
 
 ## Catalog 格式
 
