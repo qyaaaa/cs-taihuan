@@ -1,0 +1,72 @@
+[
+  {
+    "asset_id": "1001",
+    "name": "P250 | Franklin",
+    "price": 31.0,
+    "float_value": 0.08,
+    "tradable": true
+  },
+  {
+    "asset_id": "1002",
+    "name": "P250 | Franklin",
+    "price": 31.5,
+    "float_value": 0.09,
+    "tradable": true
+  },
+  {
+    "asset_id": "1003",
+    "name": "P250 | Franklin",
+    "price": 32.1,
+    "float_value": 0.1,
+    "tradable": true
+  },
+  {
+    "asset_id": "1004",
+    "name": "P250 | Franklin",
+    "price": 31.8,
+    "float_value": 0.11,
+    "tradable": true
+  },
+  {
+    "asset_id": "1005",
+    "name": "P250 | Franklin",
+    "price": 30.9,
+    "float_value": 0.07,
+    "tradable": true
+  },
+  {
+    "asset_id": "2001",
+    "name": "Galil AR | Cerberus",
+    "price": 40.0,
+    "float_value": 0.2,
+    "tradable": true
+  },
+  {
+    "asset_id": "2002",
+    "name": "Galil AR | Cerberus",
+    "price": 41.0,
+    "float_value": 0.18,
+    "tradable": true
+  },
+  {
+    "asset_id": "2003",
+    "name": "Galil AR | Cerberus",
+    "price": 42.0,
+    "float_value": 0.23,
+    "tradable": true
+  },
+  {
+    "asset_id": "3001",
+    "name": "UMP-45 | Carbon Fiber",
+    "price": 28.0,
+    "float_value": 0.05,
+    "tradable": true
+  },
+  {
+    "asset_id": "3002",
+    "name": "UMP-45 | Carbon Fiber",
+    "price": 27.5,
+    "float_value": 0.04,
+    "tradable": true
+  }
+]

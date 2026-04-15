@@ -1,0 +1,43 @@
+[
+  {
+    "name": "P250 | Franklin",
+    "collection": "The Bank Collection",
+    "rarity": "restricted",
+    "min_float": 0.0,
+    "max_float": 0.3,
+    "price": 52.0
+  },
+  {
+    "name": "UMP-45 | Carbon Fiber",
+    "collection": "The Bank Collection",
+    "rarity": "restricted",
+    "min_float": 0.0,
+    "max_float": 0.12,
+    "price": 39.0
+  },
+  {
+    "name": "AK-47 | Emerald Pinstripe",
+    "collection": "The Bank Collection",
+    "rarity": "classified",
+    "min_float": 0.0,
+    "max_float": 0.5,
+    "price": 310.0
+  },
+  {
+    "name": "Galil AR | Cerberus",
+    "collection": "The Cache Collection",
+    "rarity": "restricted",
+    "min_float": 0.0,
+    "max_float": 0.6,
+    "price": 70.0
+  },
+  {
+    "name": "FAMAS | Styx",
+    "collection": "The Cache Collection",
+    "rarity": "classified",
+    "min_float": 0.0,
+    "max_float": 0.45,
+    "price": 680.0
+  }
+]
+
