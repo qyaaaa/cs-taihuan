@@ -72,8 +72,8 @@ curl -X POST http://localhost:8080/api/buff/inventory/fetch \
 curl -X POST http://localhost:8080/api/trade-up/optimize \
   -H 'Content-Type: application/json' \
   -d '{
-    "inventoryPath": "examples/inventory.sample.json",
-    "catalogPath": "examples/catalog.sample.json",
+    "inventoryPath": "data/buff_inventory.json",
+    "catalogPath": "data/catalog.json",
     "topK": 3
   }'
 ```
@@ -88,8 +88,6 @@ curl -X POST http://localhost:8080/api/trade-up/optimize \
 - `min_float`
 - `max_float`
 - `price`
-
-示例见 [examples/catalog.sample.json](/Users/qiaoyu/project/cs-taihuan/examples/catalog.sample.json)，库存示例见 [examples/inventory.sample.json](/Users/qiaoyu/project/cs-taihuan/examples/inventory.sample.json)。
 
 ## 注意事项
 
