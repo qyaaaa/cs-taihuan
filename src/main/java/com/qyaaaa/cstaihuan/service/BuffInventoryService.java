@@ -2,7 +2,8 @@ package com.qyaaaa.cstaihuan.service;
 
 import com.qyaaaa.cstaihuan.config.BuffProperties;
 import com.qyaaaa.cstaihuan.dto.FetchInventoryRequest;
-import com.qyaaaa.cstaihuan.dto.FetchInventoryResponse;
+import com.qyaaaa.cstaihuan.dto.InventorySnapshotRequest;
+import com.qyaaaa.cstaihuan.dto.InventorySnapshotResponse;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -22,7 +23,7 @@ public class BuffInventoryService {
         this.inventoryFileService = inventoryFileService;
     }
 
-    public FetchInventoryResponse fetchAndSave(FetchInventoryRequest request) throws Exception {
+    public InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request) throws Exception {
         String outputPath = request.getOutputPath();
         if (!StringUtils.hasText(outputPath)) {
             throw new IllegalArgumentException("outputPath is required.");
@@ -47,7 +48,16 @@ public class BuffInventoryService {
 
         Path path = Paths.get(outputPath);
         inventoryFileService.save(path, items);
-        return new FetchInventoryResponse(items.size(), path.toString());
+        return new InventorySnapshotResponse(items.size(), path.toString(), items);
+    }
+
+    public InventorySnapshotResponse loadFromFile(InventorySnapshotRequest request) throws Exception {
+        if (!StringUtils.hasText(request.getInventoryPath())) {
+            throw new IllegalArgumentException("inventoryPath is required.");
+        }
+
+        Path path = Paths.get(request.getInventoryPath());
+        List<BuffItem> items = inventoryFileService.load(path);
+        return new InventorySnapshotResponse(items.size(), path.toString(), items);
     }
 }
-

@@ -1,0 +1,468 @@
+:root {
+  --panel: rgba(16, 20, 25, 0.82);
+  --panel-strong: rgba(19, 24, 31, 0.96);
+  --line: rgba(246, 194, 108, 0.16);
+  --text: #f3efe8;
+  --muted: #a89f93;
+  --gold: #f6c26c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Noto Sans SC", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(246, 194, 108, 0.1), transparent 34%),
+    radial-gradient(circle at 85% 15%, rgba(84, 110, 122, 0.24), transparent 28%),
+    linear-gradient(180deg, #0b0d10 0%, #12161c 100%);
+}
+
+.workspace-shell {
+  position: relative;
+  min-height: 100vh;
+  padding: 28px;
+  overflow: hidden;
+}
+
+.ambient {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(80px);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ambient-a {
+  top: 40px;
+  right: -80px;
+  width: 260px;
+  height: 260px;
+  background: rgba(246, 194, 108, 0.12);
+}
+
+.ambient-b {
+  left: -120px;
+  bottom: 80px;
+  width: 320px;
+  height: 320px;
+  background: rgba(81, 127, 161, 0.12);
+}
+
+.workspace-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 24px;
+  padding: 42px 0 34px;
+  border-bottom: 1px solid var(--line);
+}
+
+.hero-copy h1 {
+  margin: 0;
+  max-width: 10ch;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: clamp(2.8rem, 6vw, 5.2rem);
+  line-height: 0.94;
+  letter-spacing: -0.04em;
+}
+
+.eyebrow,
+.section-kicker {
+  display: inline-block;
+  margin: 0 0 12px;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 12px;
+}
+
+.hero-text {
+  max-width: 42rem;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.hero-ribbon {
+  display: grid;
+  align-content: end;
+  gap: 12px;
+}
+
+.ribbon-metric,
+.metric-tile,
+.plan-detail,
+.control-strip,
+.inventory-stage,
+.plans-stage {
+  border: 1px solid var(--line);
+}
+
+.ribbon-metric {
+  padding: 16px 18px;
+  background: linear-gradient(180deg, rgba(246, 194, 108, 0.06), rgba(15, 18, 24, 0.65));
+}
+
+.ribbon-metric span,
+.metric-tile span,
+.material-meta label,
+.detail-metrics label,
+.plan-inline label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ribbon-metric strong,
+.metric-tile strong {
+  display: block;
+  margin-top: 6px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.6rem;
+}
+
+.workspace-grid {
+  display: grid;
+  gap: 26px;
+  padding-top: 26px;
+}
+
+.control-strip,
+.inventory-stage,
+.plans-stage {
+  padding: 22px;
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+}
+
+.control-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.section-head h2,
+.section-head h3 {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: -0.03em;
+}
+
+.section-head-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+}
+
+.field-grid,
+.metrics-row,
+.detail-columns {
+  display: grid;
+}
+
+.field-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.surface-note {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metrics-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.metric-tile {
+  padding: 14px 16px;
+  background: rgba(246, 194, 108, 0.04);
+}
+
+.inventory-list {
+  margin-top: 18px;
+}
+
+.inventory-list-head,
+.inventory-row {
+  display: grid;
+  grid-template-columns: 2.1fr 0.7fr 0.9fr 1.2fr 0.9fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.inventory-list-head {
+  padding: 0 16px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.inventory-row {
+  width: 100%;
+  padding: 15px 16px;
+  border: 0;
+  border-top: 1px solid rgba(246, 194, 108, 0.08);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.inventory-row:hover,
+.plan-row:hover,
+.plan-row.active {
+  background: rgba(246, 194, 108, 0.06);
+  transform: translateX(4px);
+}
+
+.inventory-row strong,
+.material-card h3,
+.plan-row h3,
+.detail-item strong {
+  display: block;
+  font-size: 15px;
+}
+
+.inventory-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.inventory-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.material-card,
+.plan-row,
+.detail-item {
+  border: 1px solid rgba(246, 194, 108, 0.12);
+}
+
+.material-card {
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(246, 194, 108, 0.06), rgba(11, 13, 16, 0.82));
+}
+
+.material-topline,
+.material-meta,
+.plan-row-top,
+.plan-inline,
+.detail-item,
+.detail-metrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.material-card p,
+.detail-item p {
+  margin: 6px 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.plans-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.plan-list,
+.detail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.plan-row {
+  padding: 16px;
+  background: rgba(9, 11, 14, 0.68);
+  color: var(--text);
+  text-align: left;
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.plan-detail {
+  min-height: 420px;
+  padding: 18px;
+  background: var(--panel-strong);
+}
+
+.detail-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: end;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(246, 194, 108, 0.08);
+}
+
+.detail-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.detail-columns h4 {
+  margin: 0 0 10px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1rem;
+}
+
+.detail-item {
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  align-items: start;
+}
+
+.detail-side {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.detail-side em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.empty-state p {
+  color: var(--muted);
+}
+
+.reveal-up {
+  animation: revealUp 560ms ease both;
+}
+
+.reveal-delay {
+  animation-delay: 120ms;
+}
+
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.el-form-item {
+  margin-bottom: 8px;
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-input-number,
+.el-radio-button__inner,
+.el-button {
+  border-radius: 0 !important;
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-input-number__decrease,
+.el-input-number__increase,
+.el-input-number .el-input__wrapper {
+  background: rgba(255, 255, 255, 0.03) !important;
+  box-shadow: 0 0 0 1px rgba(246, 194, 108, 0.12) inset !important;
+  color: var(--text) !important;
+}
+
+.el-form-item__label {
+  color: var(--muted) !important;
+}
+
+.el-radio-button__inner {
+  border-color: rgba(246, 194, 108, 0.16) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  color: var(--muted) !important;
+}
+
+.el-radio-button__original-radio:checked + .el-radio-button__inner {
+  background: rgba(246, 194, 108, 0.16) !important;
+  color: var(--text) !important;
+}
+
+.el-button--primary {
+  --el-button-bg-color: #d39b43 !important;
+  --el-button-border-color: #d39b43 !important;
+}
+
+.el-button--warning {
+  --el-button-bg-color: #c67f46 !important;
+  --el-button-border-color: #c67f46 !important;
+}
+
+@media (max-width: 1080px) {
+  .workspace-hero,
+  .control-strip,
+  .plans-layout,
+  .detail-columns,
+  .field-grid,
+  .metrics-row {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-hero,
+  .section-head-row {
+    align-items: start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace-shell {
+    padding: 16px;
+  }
+
+  .inventory-list-head {
+    display: none;
+  }
+
+  .inventory-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-actions {
+    flex-direction: column;
+  }
+}
+
