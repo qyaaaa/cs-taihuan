@@ -1,9 +1,7 @@
 :root {
-  --bg: #0b0d10;
   --panel: rgba(16, 20, 25, 0.82);
   --panel-strong: rgba(19, 24, 31, 0.96);
   --line: rgba(246, 194, 108, 0.16);
-  --line-strong: rgba(246, 194, 108, 0.38);
   --text: #f3efe8;
   --muted: #a89f93;
   --gold: #f6c26c;
@@ -467,3 +465,4 @@ body {
     flex-direction: column;
   }
 }
+
