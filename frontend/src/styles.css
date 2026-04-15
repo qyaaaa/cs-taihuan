@@ -190,6 +190,55 @@ body {
   font-size: 13px;
 }
 
+.subtle-note {
+  line-height: 1.7;
+}
+
+.session-status-panel {
+  margin-top: 14px;
+}
+
+.session-chip-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.session-chip {
+  padding: 6px 10px;
+  border: 1px solid rgba(246, 194, 108, 0.14);
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.session-chip.active {
+  color: var(--text);
+  background: rgba(246, 194, 108, 0.1);
+  border-color: rgba(246, 194, 108, 0.26);
+}
+
+.session-mask {
+  display: block;
+  margin-top: 14px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+}
+
+.dialog-copy {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .metrics-row {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
@@ -410,6 +459,20 @@ body {
   color: var(--muted) !important;
 }
 
+.el-dialog {
+  border-radius: 0 !important;
+  background: rgba(15, 19, 25, 0.96) !important;
+  border: 1px solid rgba(246, 194, 108, 0.18);
+}
+
+.el-dialog__title {
+  color: var(--text) !important;
+}
+
+.el-dialog__body {
+  color: var(--text) !important;
+}
+
 .el-radio-button__inner {
   border-color: rgba(246, 194, 108, 0.16) !important;
   background: rgba(255, 255, 255, 0.02) !important;
@@ -465,4 +528,3 @@ body {
     flex-direction: column;
   }
 }
-

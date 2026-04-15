@@ -16,11 +16,13 @@ public class BuffInventoryService {
     private final BuffProperties buffProperties;
     private final BuffApiClient buffApiClient;
     private final InventoryFileService inventoryFileService;
+    private final BuffSessionService buffSessionService;
 
-    public BuffInventoryService(BuffProperties buffProperties, BuffApiClient buffApiClient, InventoryFileService inventoryFileService) {
+    public BuffInventoryService(BuffProperties buffProperties, BuffApiClient buffApiClient, InventoryFileService inventoryFileService, BuffSessionService buffSessionService) {
         this.buffProperties = buffProperties;
         this.buffApiClient = buffApiClient;
         this.inventoryFileService = inventoryFileService;
+        this.buffSessionService = buffSessionService;
     }
 
     public InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request) throws Exception {
@@ -29,10 +31,7 @@ public class BuffInventoryService {
             throw new IllegalArgumentException("outputPath is required.");
         }
 
-        String cookie = StringUtils.hasText(request.getCookie()) ? request.getCookie() : buffProperties.getCookie();
-        if (!StringUtils.hasText(cookie)) {
-            throw new IllegalArgumentException("BUFF cookie is missing. Set buff.cookie or BUFF_COOKIE.");
-        }
+        String cookie = buffSessionService.resolveCookie(request.getCookie());
 
         String game = StringUtils.hasText(request.getGame()) ? request.getGame() : buffProperties.getGame();
         int pageSize = request.getPageSize() == null ? buffProperties.getPageSize() : request.getPageSize().intValue();

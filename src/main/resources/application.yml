@@ -3,10 +3,11 @@ server:
 
 buff:
   base-url: https://buff.163.com
-  cookie: ${BUFF_COOKIE:}
   game: csgo
   page-size: 80
   timeout-millis: 15000
+  session:
+    storage-path: data/buff-session.json
 
 trade-up:
   sale-fee-rate: 0.025

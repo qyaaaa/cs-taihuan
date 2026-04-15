@@ -13,7 +13,23 @@ const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
 
 const loadingInventory = ref(false)
 const loadingPlans = ref(false)
+const loadingSession = ref(false)
 const selectedPlanIndex = ref(0)
+const sessionDialogVisible = ref(false)
+
+const sessionForm = reactive({
+  cookie: '',
+})
+
+const sessionState = reactive({
+  connected: false,
+  valid: false,
+  source: '',
+  maskedCookie: '',
+  updatedAt: '',
+  lastValidatedAt: '',
+  message: '尚未保存 BUFF 会话。',
+})
 
 const inventoryForm = reactive({
   outputPath: 'data/buff_inventory.json',
@@ -131,6 +147,92 @@ const postJson = async (url, payload) => {
   return response.json()
 }
 
+const request = async (url, options = {}) => {
+  const response = await fetch(url, options)
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `Request failed: ${response.status}`)
+  }
+  if (response.status === 204) {
+    return null
+  }
+  return response.json()
+}
+
+const normalizeSession = (payload) => {
+  sessionState.connected = Boolean(payload?.connected)
+  sessionState.valid = Boolean(payload?.valid)
+  sessionState.source = payload?.source || ''
+  sessionState.maskedCookie = payload?.maskedCookie || ''
+  sessionState.updatedAt = payload?.updatedAt || ''
+  sessionState.lastValidatedAt = payload?.lastValidatedAt || ''
+  sessionState.message = payload?.message || '尚未保存 BUFF 会话。'
+}
+
+const loadSessionStatus = async () => {
+  loadingSession.value = true
+  try {
+    const payload = await request('/api/buff/session/status')
+    normalizeSession(payload)
+  } catch (error) {
+    ElMessage.error(error.message || '读取登录状态失败')
+  } finally {
+    loadingSession.value = false
+  }
+}
+
+const saveSession = async () => {
+  loadingSession.value = true
+  try {
+    const payload = await postJson('/api/buff/session/import', {
+      cookie: sessionForm.cookie,
+      source: 'frontend-manual',
+    })
+    normalizeSession(payload)
+    sessionDialogVisible.value = false
+    sessionForm.cookie = ''
+    ElMessage.success('BUFF 会话已保存到后端')
+  } catch (error) {
+    ElMessage.error(error.message || '保存会话失败')
+  } finally {
+    loadingSession.value = false
+  }
+}
+
+const validateSession = async () => {
+  loadingSession.value = true
+  try {
+    const payload = await postJson('/api/buff/session/validate', {})
+    normalizeSession(payload)
+    ElMessage.success(payload.message || '会话校验完成')
+  } catch (error) {
+    ElMessage.error(error.message || '会话校验失败')
+  } finally {
+    loadingSession.value = false
+  }
+}
+
+const clearSession = async () => {
+  loadingSession.value = true
+  try {
+    await request('/api/buff/session', { method: 'DELETE' })
+    normalizeSession({
+      connected: false,
+      valid: false,
+      source: '',
+      maskedCookie: '',
+      updatedAt: '',
+      lastValidatedAt: '',
+      message: '已清除后端托管的 BUFF 会话。',
+    })
+    ElMessage.success('已清除 BUFF 会话')
+  } catch (error) {
+    ElMessage.error(error.message || '清除会话失败')
+  } finally {
+    loadingSession.value = false
+  }
+}
+
 const normalizeInventory = (payload, actionLabel) => {
   inventoryState.itemCount = payload.itemCount || 0
   inventoryState.outputPath = payload.outputPath || ''
@@ -196,6 +298,8 @@ const optimizePlans = async () => {
     loadingPlans.value = false
   }
 }
+
+loadSessionStatus()
 </script>
 
 <template>
@@ -219,11 +323,40 @@ const optimizePlans = async () => {
       </div>
     </header>
 
-    <main class="workspace-grid">
-      <section class="control-strip reveal-up">
-        <div class="control-block">
-          <div class="section-head">
-            <span class="section-kicker">BUFF Sync</span>
+      <main class="workspace-grid">
+        <section class="control-strip reveal-up">
+          <div class="control-block">
+            <div class="section-head">
+              <span class="section-kicker">BUFF Session</span>
+              <h2>登录中心</h2>
+            </div>
+            <div class="session-status-panel">
+              <div class="session-chip-row">
+                <span class="session-chip" :class="{ active: sessionState.connected }">
+                  {{ sessionState.connected ? '已保存会话' : '未登录' }}
+                </span>
+                <span class="session-chip" :class="{ active: sessionState.valid }">
+                  {{ sessionState.valid ? '会话有效' : '待校验' }}
+                </span>
+              </div>
+              <strong class="session-mask">{{ sessionState.maskedCookie || '尚未导入 Cookie' }}</strong>
+              <p class="surface-note">
+                {{ sessionState.message }}
+              </p>
+              <p class="surface-note subtle-note">
+                说明：BUFF 暂无稳定公开的第三方网页扫码接口，这一版先由前端管理后端托管会话，不再要求在 yml 中手配 session。
+              </p>
+              <div class="inline-actions">
+                <el-button type="primary" :loading="loadingSession" @click="sessionDialogVisible = true">导入会话</el-button>
+                <el-button plain :loading="loadingSession" @click="validateSession">校验会话</el-button>
+                <el-button plain :loading="loadingSession" @click="clearSession">清除会话</el-button>
+              </div>
+            </div>
+          </div>
+
+          <div class="control-block">
+            <div class="section-head">
+              <span class="section-kicker">BUFF Sync</span>
             <h2>库存采集</h2>
           </div>
           <el-form label-position="top" class="dense-form">
@@ -246,10 +379,10 @@ const optimizePlans = async () => {
               <el-button plain :loading="loadingInventory" @click="loadInventory">从文件载入</el-button>
             </div>
           </el-form>
-          <p class="surface-note">{{ inventoryState.lastAction }}</p>
-        </div>
+            <p class="surface-note">{{ inventoryState.lastAction }}</p>
+          </div>
 
-        <div class="control-block">
+          <div class="control-block">
           <div class="section-head">
             <span class="section-kicker">Trade-Up Engine</span>
             <h2>方案计算</h2>
@@ -276,13 +409,35 @@ const optimizePlans = async () => {
 
       <InventoryBoard :inventory-stats="inventoryStats" :grouped-inventory="groupedInventory" />
 
-      <PlanWorkspace
-        :plans="sortedPlans"
-        :selected-plan="selectedPlan"
-        :selected-plan-index="selectedPlanIndex"
-        @select-plan="selectedPlanIndex = $event"
-      />
-    </main>
-  </div>
-</template>
+        <PlanWorkspace
+          :plans="sortedPlans"
+          :selected-plan="selectedPlan"
+          :selected-plan-index="selectedPlanIndex"
+          @select-plan="selectedPlanIndex = $event"
+        />
+      </main>
 
+      <el-dialog
+        v-model="sessionDialogVisible"
+        title="导入 BUFF 会话"
+        width="560px"
+        class="session-dialog"
+      >
+        <p class="dialog-copy">
+          先在浏览器登录 BUFF，然后把请求头里的完整 Cookie 粘贴到这里。保存后由后端托管，库存抓取会自动复用它。
+        </p>
+        <el-input
+          v-model="sessionForm.cookie"
+          type="textarea"
+          :rows="8"
+          placeholder="session=...; csrf_token=...; Device-Id=..."
+        />
+        <template #footer>
+          <div class="dialog-actions">
+            <el-button @click="sessionDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="loadingSession" @click="saveSession">保存会话</el-button>
+          </div>
+        </template>
+      </el-dialog>
+    </div>
+</template>
