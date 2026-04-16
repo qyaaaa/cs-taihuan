@@ -6,6 +6,7 @@ public class FetchInventoryRequest {
     private Integer pageSize;
     private Integer maxPages;
     private String cookie;
+    private Boolean forceRefresh;
 
     public String getOutputPath() {
         return outputPath;
@@ -46,5 +47,12 @@ public class FetchInventoryRequest {
     public void setCookie(String cookie) {
         this.cookie = cookie;
     }
-}
 
+    public Boolean getForceRefresh() {
+        return forceRefresh;
+    }
+
+    public void setForceRefresh(Boolean forceRefresh) {
+        this.forceRefresh = forceRefresh;
+    }
+}

@@ -6,10 +6,12 @@
 
 1. 通过 `application.yml` 读取 BUFF 基础配置，并由后端托管 BUFF 会话。
 2. 前端提供登录中心，可导入、校验、清除 BUFF 会话。
-3. 提供 REST API 抓取 BUFF 库存并输出标准化 JSON。
-4. 读取本地 `catalog` 元数据，自动计算最优汰换方案。
-5. 按手续费后期望利润排序返回候选合同。
-6. 前端已拆分为独立的 `Vue 3 + Element Plus` 项目，展示库存看板和 EV 推荐方案。
+3. 抓取 BUFF 库存时会同时写入本地 JSON 和 MySQL 数据库快照。
+4. 内置抓取冷却时间与快照指纹去重，避免短时间重复请求 BUFF 接口。
+5. 读取本地 `catalog` 元数据，自动计算最优汰换方案。
+6. 按手续费后期望利润排序返回候选合同。
+7. 前端已拆分为独立的 `Vue 3 + Element Plus` 项目，展示库存看板和 EV 推荐方案。
+8. 库存明细会保存图片、磨损度、收藏品、品质等展示字段。
 
 ## 项目结构
 
@@ -33,10 +35,26 @@ frontend
 在 [src/main/resources/application.yml](/Users/qiaoyu/project/cs-taihuan/src/main/resources/application.yml) 中配置：
 
 ```yml
+spring:
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    url: jdbc:mysql://mc-mysql:3306/cs_taihuan?characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowMultiQueries=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: abc123_
+  flyway:
+    enabled: true
+    user: root
+    password: abc123_
+    url: jdbc:mysql://mc-mysql:3306/cs_taihuan?characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowMultiQueries=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Asia/Shanghai
+    table: co_flyway_schema_history
+    baseline-version: 0
+    baseline-on-migrate: true
 buff:
   base-url: https://buff.163.com
   game: csgo
   page-size: 80
+  fetch-cooldown-seconds: 180
   session:
     storage-path: data/buff-session.json
 trade-up:
@@ -63,6 +81,12 @@ npm run dev
 
 默认前端开发地址为 `http://localhost:5173`，并通过 Vite 代理访问后端接口。
 
+库存抓取相关数据默认会落到：
+
+- `data/buff_inventory.json`
+- MySQL 数据库 `cs_taihuan`
+- Flyway 元数据表 `co_flyway_schema_history`
+
 默认接口：
 
 - `GET /api/buff/session/status`
@@ -82,6 +106,9 @@ npm run dev
 - 前端负责登录状态显示与会话导入
 - 后端负责保存和校验 BUFF session
 - 库存抓取默认优先使用后端保存的 session
+- 主动重新抓取时默认会请求 BUFF 校验最新库存，库存变化后会新建快照重新落库
+- 仅在显式关闭 `forceRefresh` 时，库存同步才会优先复用最近快照
+- 库表结构由 Flyway 自动维护
 
 ### 抓取库存
 
@@ -90,9 +117,16 @@ curl -X POST http://localhost:8080/api/buff/inventory/fetch \
   -H 'Content-Type: application/json' \
   -d '{
     "outputPath": "data/buff_inventory.json",
-    "game": "csgo"
+    "game": "csgo",
+    "forceRefresh": true
   }'
 ```
+
+接口返回里会额外说明：
+
+- 这次是否命中缓存
+- 当前快照来自 `CACHE`、`REUSED` 还是 `REMOTE`
+- 当前快照对应的数据库 `snapshotId`
 
 ### 计算汰换
 
