@@ -115,9 +115,15 @@ public class BuffApiClient {
     private BuffItem parseItem(Map<String, Object> raw) {
         Map<String, Object> goods = mapValue(raw.get("goods_info"));
         Map<String, Object> asset = mapValue(raw.get("asset_info"));
+        Map<String, Object> assetInfo = mapValue(asset.get("info"));
+        Map<String, Object> tags = mapValue(mergeFirst(raw.get("tags"), goods.get("tags"), asset.get("tags")));
+        Map<String, Object> rarityTag = mapValue(tags.get("rarity"));
+        Map<String, Object> exteriorTag = mapValue(tags.get("exterior"));
+        Map<String, Object> itemsetTag = mapValue(tags.get("itemset"));
         Map<String, Object> merged = new LinkedHashMap<String, Object>();
         merged.putAll(goods);
         merged.putAll(asset);
+        merged.putAll(assetInfo);
         merged.putAll(raw);
 
         String name = stringValue(merged, "market_hash_name", "name", "short_name");
@@ -130,9 +136,26 @@ public class BuffApiClient {
             name,
             doubleValue(merged, 0.0d, "sell_min_price", "price", "quick_price", "steam_price"),
             nullableDoubleValue(merged, "paintwear", "float_value", "goods_float"),
-            stringValue(merged, "collection"),
-            normalizeRarity(stringValue(merged, "rarity", "quality")),
-            !("cannot_trade".equals(String.valueOf(merged.get("state"))) || merged.get("trade_cooldown") != null),
+            normalizeImageUrl(stringValue(assetInfo, "original_icon_url", "icon_url", "img", "image_url")),
+            firstNonBlank(
+                stringValue(exteriorTag, "localized_name"),
+                stringValue(merged, "exterior", "wear_name", "paintwear_desc", "item_wear")
+            ),
+            firstNonBlank(
+                stringValue(itemsetTag, "localized_name"),
+                stringValue(merged, "collection", "collection_name")
+            ),
+            normalizeRarity(
+                firstNonBlank(
+                    stringValue(rarityTag, "internal_name"),
+                    stringValue(merged, "rarity", "quality")
+                )
+            ),
+            firstNonBlank(
+                stringValue(rarityTag, "localized_name"),
+                stringValue(merged, "quality_name", "quality", "rarity_name")
+            ),
+            booleanValue(merged, "tradable", "can_trade", "allow_exchange"),
             stringValue(merged, "goods_id"),
             raw
         );
@@ -206,6 +229,24 @@ public class BuffApiClient {
             return null;
         }
         String lowered = rarity.trim().toLowerCase();
+        if ("ancient_weapon".equals(lowered) || "covert_weapon".equals(lowered)) {
+            return "covert";
+        }
+        if ("legendary_weapon".equals(lowered) || "classified_weapon".equals(lowered)) {
+            return "classified";
+        }
+        if ("mythical_weapon".equals(lowered) || "restricted_weapon".equals(lowered)) {
+            return "restricted";
+        }
+        if ("rare_weapon".equals(lowered) || "milspec_weapon".equals(lowered)) {
+            return "mil-spec";
+        }
+        if ("common_weapon".equals(lowered) || "industrial_weapon".equals(lowered)) {
+            return "industrial";
+        }
+        if ("default_weapon".equals(lowered) || "consumer_weapon".equals(lowered)) {
+            return "consumer";
+        }
         if ("milspec".equals(lowered) || "mil-spec grade".equals(lowered)) {
             return "mil-spec";
         }
@@ -226,5 +267,53 @@ public class BuffApiClient {
         }
         return lowered;
     }
-}
 
+    private static String normalizeImageUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.trim().isEmpty()) {
+            return null;
+        }
+        String trimmed = imageUrl.trim();
+        if (trimmed.startsWith("//")) {
+            return "https:" + trimmed;
+        }
+        return trimmed;
+    }
+
+    private static Object mergeFirst(Object... values) {
+        for (Object value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private static boolean booleanValue(Map<String, Object> payload, String... keys) {
+        for (String key : keys) {
+            Object value = payload.get(key);
+            if (value == null) {
+                continue;
+            }
+            if (value instanceof Boolean) {
+                return ((Boolean) value).booleanValue();
+            }
+            String text = String.valueOf(value).trim().toLowerCase();
+            if ("true".equals(text) || "1".equals(text) || "yes".equals(text)) {
+                return true;
+            }
+            if ("false".equals(text) || "0".equals(text) || "no".equals(text)) {
+                return false;
+            }
+        }
+        return false;
+    }
+}

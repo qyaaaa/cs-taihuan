@@ -40,10 +40,10 @@ const currency = (value) => `¥${Number(value || 0).toFixed(2)}`
     <div v-if="inventoryView === 'list'" class="inventory-list">
       <div class="inventory-list-head">
         <span>饰品</span>
-        <span>数量</span>
+        <span>品质</span>
         <span>均价</span>
         <span>收藏品</span>
-        <span>最低磨损</span>
+        <span>磨损</span>
       </div>
       <button
         v-for="group in groupedInventory"
@@ -51,25 +51,31 @@ const currency = (value) => `¥${Number(value || 0).toFixed(2)}`
         class="inventory-row"
         type="button"
       >
-        <span>
+        <span class="inventory-item-main">
+          <img v-if="group.imageUrl" :src="group.imageUrl" :alt="group.name" class="inventory-thumb" />
           <strong>{{ group.name }}</strong>
-          <em>{{ group.rarity }}</em>
+          <em>{{ group.count }} 件</em>
         </span>
-        <span>{{ group.count }}</span>
+        <span>{{ group.qualityLabel }}</span>
         <span>{{ currency(group.avgPrice) }}</span>
         <span>{{ group.collection }}</span>
-        <span>{{ group.minFloat === null ? '--' : group.minFloat.toFixed(4) }}</span>
+        <span>{{ group.wearName || (group.minFloat === null ? '--' : group.minFloat.toFixed(4)) }}</span>
       </button>
     </div>
 
     <div v-else class="inventory-cards">
       <article v-for="group in groupedInventory" :key="group.name" class="material-card">
+        <img v-if="group.imageUrl" :src="group.imageUrl" :alt="group.name" class="material-thumb" />
         <div class="material-topline">
-          <span>{{ group.rarity }}</span>
+          <span>{{ group.qualityLabel }}</span>
           <strong>x{{ group.count }}</strong>
         </div>
         <h3>{{ group.name }}</h3>
         <p>{{ group.collection }}</p>
+        <div class="material-meta">
+          <label>磨损</label>
+          <strong>{{ group.wearName || (group.minFloat === null ? '--' : group.minFloat.toFixed(4)) }}</strong>
+        </div>
         <div class="material-meta">
           <label>均价</label>
           <strong>{{ currency(group.avgPrice) }}</strong>
@@ -82,4 +88,3 @@ const currency = (value) => `¥${Number(value || 0).toFixed(2)}`
     </div>
   </section>
 </template>
-

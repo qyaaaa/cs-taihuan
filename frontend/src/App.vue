@@ -37,6 +37,7 @@ const inventoryForm = reactive({
   game: 'csgo',
   pageSize: 80,
   maxPages: null,
+  forceRefresh: true,
 })
 
 const planForm = reactive({
@@ -83,7 +84,10 @@ const groupedInventory = computed(() => {
         count: 0,
         avgPrice: 0,
         minFloat: null,
+        imageUrl: item.imageUrl || '',
+        wearName: item.wearName || '',
         rarity: item.rarity || 'unknown',
+        qualityLabel: item.qualityLabel || item.rarity || '未知品质',
         collection: item.collection || '未补全收藏品',
         items: [],
       })
@@ -101,6 +105,15 @@ const groupedInventory = computed(() => {
         .filter((value) => value !== null && value !== undefined)
       group.avgPrice = totalPrice / group.items.length
       group.minFloat = floats.length ? Math.min(...floats) : null
+      if (!group.imageUrl) {
+        group.imageUrl = group.items.map((item) => item.imageUrl).find(Boolean) || ''
+      }
+      if (!group.wearName) {
+        group.wearName = group.items.map((item) => item.wearName).find(Boolean) || ''
+      }
+      if (!group.qualityLabel || group.qualityLabel === '未知品质') {
+        group.qualityLabel = group.items.map((item) => item.qualityLabel || item.rarity).find(Boolean) || '未知品质'
+      }
       return group
     })
     .sort((a, b) => b.count - a.count || a.avgPrice - b.avgPrice)
@@ -237,7 +250,7 @@ const normalizeInventory = (payload, actionLabel) => {
   inventoryState.itemCount = payload.itemCount || 0
   inventoryState.outputPath = payload.outputPath || ''
   inventoryState.items = payload.items || []
-  inventoryState.lastAction = actionLabel
+  inventoryState.lastAction = payload.message || actionLabel
   if (inventoryState.outputPath) {
     planForm.inventoryPath = inventoryState.outputPath
     inventoryForm.inventoryPath = inventoryState.outputPath
@@ -252,9 +265,10 @@ const fetchInventory = async () => {
       game: inventoryForm.game,
       pageSize: inventoryForm.pageSize,
       maxPages: inventoryForm.maxPages || null,
+      forceRefresh: inventoryForm.forceRefresh,
     })
     normalizeInventory(payload, '已从 BUFF 抓取并保存库存')
-    ElMessage.success(`已同步 ${payload.itemCount} 件素材`)
+    ElMessage.success(payload.message || `已同步 ${payload.itemCount} 件素材`)
   } catch (error) {
     ElMessage.error(error.message || '抓取库存失败')
   } finally {
@@ -372,6 +386,9 @@ loadSessionStatus()
               </el-form-item>
               <el-form-item label="分页大小">
                 <el-input-number v-model="inventoryForm.pageSize" :min="1" :max="200" controls-position="right" />
+              </el-form-item>
+              <el-form-item label="强制刷新">
+                <el-switch v-model="inventoryForm.forceRefresh" inline-prompt active-text="是" inactive-text="否" />
               </el-form-item>
             </div>
             <div class="inline-actions">

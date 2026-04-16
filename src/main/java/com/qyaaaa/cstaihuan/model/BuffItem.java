@@ -11,8 +11,14 @@ public class BuffItem {
     private double price;
     @JsonProperty("float_value")
     private Double floatValue;
+    @JsonProperty("image_url")
+    private String imageUrl;
+    @JsonProperty("wear_name")
+    private String wearName;
     private String collection;
     private String rarity;
+    @JsonProperty("quality_label")
+    private String qualityLabel;
     private boolean tradable = true;
     @JsonProperty("goods_id")
     private String goodsId;
@@ -21,20 +27,23 @@ public class BuffItem {
     public BuffItem() {
     }
 
-    public BuffItem(String assetId, String name, double price, Double floatValue, String collection, String rarity, boolean tradable, String goodsId, Map<String, Object> raw) {
+    public BuffItem(String assetId, String name, double price, Double floatValue, String imageUrl, String wearName, String collection, String rarity, String qualityLabel, boolean tradable, String goodsId, Map<String, Object> raw) {
         this.assetId = assetId;
         this.name = name;
         this.price = price;
         this.floatValue = floatValue;
+        this.imageUrl = imageUrl;
+        this.wearName = wearName;
         this.collection = collection;
         this.rarity = rarity;
+        this.qualityLabel = qualityLabel;
         this.tradable = tradable;
         this.goodsId = goodsId;
         this.raw = raw == null ? new LinkedHashMap<String, Object>() : new LinkedHashMap<String, Object>(raw);
     }
 
     public BuffItem withCatalog(CatalogSkin skin) {
-        return new BuffItem(assetId, name, price, floatValue, skin.getCollection(), skin.getRarity(), tradable, goodsId, raw);
+        return new BuffItem(assetId, name, price, floatValue, imageUrl, wearName, skin.getCollection(), skin.getRarity(), qualityLabel, tradable, goodsId, raw);
     }
 
     public String getAssetId() {
@@ -53,12 +62,24 @@ public class BuffItem {
         return floatValue;
     }
 
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public String getWearName() {
+        return wearName;
+    }
+
     public String getCollection() {
         return collection;
     }
 
     public String getRarity() {
         return rarity;
+    }
+
+    public String getQualityLabel() {
+        return qualityLabel;
     }
 
     public boolean isTradable() {
@@ -89,12 +110,24 @@ public class BuffItem {
         this.floatValue = floatValue;
     }
 
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public void setWearName(String wearName) {
+        this.wearName = wearName;
+    }
+
     public void setCollection(String collection) {
         this.collection = collection;
     }
 
     public void setRarity(String rarity) {
         this.rarity = rarity == null ? null : rarity.trim().toLowerCase();
+    }
+
+    public void setQualityLabel(String qualityLabel) {
+        this.qualityLabel = qualityLabel;
     }
 
     public void setTradable(boolean tradable) {

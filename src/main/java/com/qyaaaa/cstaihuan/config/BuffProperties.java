@@ -8,6 +8,7 @@ public class BuffProperties {
     private String game = "csgo";
     private int pageSize = 80;
     private int timeoutMillis = 15000;
+    private long fetchCooldownSeconds = 180;
 
     public String getBaseUrl() {
         return baseUrl;
@@ -39,5 +40,13 @@ public class BuffProperties {
 
     public void setTimeoutMillis(int timeoutMillis) {
         this.timeoutMillis = timeoutMillis;
+    }
+
+    public long getFetchCooldownSeconds() {
+        return fetchCooldownSeconds;
+    }
+
+    public void setFetchCooldownSeconds(long fetchCooldownSeconds) {
+        this.fetchCooldownSeconds = fetchCooldownSeconds;
     }
 }
