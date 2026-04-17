@@ -6,12 +6,12 @@
 
 1. 通过 `application.yml` 读取 BUFF 基础配置，并由后端托管 BUFF 会话。
 2. 前端提供登录中心，可导入、校验、清除 BUFF 会话。
-3. 抓取 BUFF 库存时会同时写入本地 JSON 和 MySQL 数据库快照。
+3. 抓取 BUFF 库存时会同时写入本地 JSON，并把 `rarity = covert` 的炼金素材写入 MySQL 数据库快照。
 4. 内置抓取冷却时间与快照指纹去重，避免短时间重复请求 BUFF 接口。
 5. 读取本地 `catalog` 元数据，自动计算最优汰换方案。
 6. 按手续费后期望利润排序返回候选合同。
 7. 前端已拆分为独立的 `Vue 3 + Element Plus` 项目，展示库存看板和 EV 推荐方案。
-8. 库存明细会保存图片、磨损度、收藏品、品质等展示字段。
+8. 库存明细会保存图片、磨损度、收藏品、品质等展示字段，并在前端逐件展示。
 
 ## 项目结构
 
@@ -95,6 +95,7 @@ npm run dev
 - `DELETE /api/buff/session`
 - `POST /api/buff/inventory/fetch`
 - `POST /api/buff/inventory/load`
+- `POST /api/buff/inventory/page`
 - `POST /api/trade-up/optimize`
 
 ### 会话托管
@@ -106,9 +107,10 @@ npm run dev
 - 前端负责登录状态显示与会话导入
 - 后端负责保存和校验 BUFF session
 - 库存抓取默认优先使用后端保存的 session
-- 主动重新抓取时默认会请求 BUFF 校验最新库存，库存变化后会新建快照重新落库
+- 主动重新抓取时默认会请求 BUFF 校验最新库存，`covert` 素材变化后会新建快照重新落库
 - 仅在显式关闭 `forceRefresh` 时，库存同步才会优先复用最近快照
 - 库表结构由 Flyway 自动维护
+- 如果 BUFF 返回 `429 Too Many Requests`，系统会优先回退到最近一次数据库快照
 
 ### 抓取库存
 

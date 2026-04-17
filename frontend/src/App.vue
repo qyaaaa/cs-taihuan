@@ -50,9 +50,17 @@ const planForm = reactive({
 })
 
 const inventoryState = reactive({
+  snapshotId: null,
   itemCount: 0,
+  tradableCount: 0,
+  withFloatCount: 0,
+  totalCost: 0,
+  totalItems: 0,
+  currentPage: 1,
+  pageSize: 50,
   outputPath: '',
   items: [],
+  usePersistedPaging: false,
   lastAction: '尚未加载库存',
 })
 
@@ -63,60 +71,26 @@ const planState = reactive({
 
 const inventoryStats = computed(() => {
   const items = inventoryState.items || []
-  const totalCost = items.reduce((sum, item) => sum + Number(item.price || 0), 0)
-  const tradableCount = items.filter((item) => item.tradable !== false).length
-  const withFloatCount = items.filter((item) => item.floatValue !== null && item.floatValue !== undefined).length
+  const totalCost = inventoryState.usePersistedPaging
+    ? Number(inventoryState.totalCost || 0)
+    : items.reduce((sum, item) => sum + Number(item.price || 0), 0)
+  const tradableCount = inventoryState.usePersistedPaging
+    ? Number(inventoryState.tradableCount || 0)
+    : items.filter((item) => item.tradable !== false).length
+  const withFloatCount = inventoryState.usePersistedPaging
+    ? Number(inventoryState.withFloatCount || 0)
+    : items.filter((item) => item.floatValue !== null && item.floatValue !== undefined).length
+  const itemCount = inventoryState.usePersistedPaging ? Number(inventoryState.itemCount || 0) : items.length
   return [
-    { label: '素材总数', value: String(items.length).padStart(2, '0') },
+    { label: '素材总数', value: String(itemCount).padStart(2, '0') },
     { label: '可交易', value: String(tradableCount).padStart(2, '0') },
     { label: '有磨损值', value: String(withFloatCount).padStart(2, '0') },
     { label: '库存总成本', value: currency(totalCost) },
   ]
 })
 
-const groupedInventory = computed(() => {
-  const groups = new Map()
-  for (const item of inventoryState.items || []) {
-    const key = item.name || '未命名饰品'
-    if (!groups.has(key)) {
-      groups.set(key, {
-        name: key,
-        count: 0,
-        avgPrice: 0,
-        minFloat: null,
-        imageUrl: item.imageUrl || '',
-        wearName: item.wearName || '',
-        rarity: item.rarity || 'unknown',
-        qualityLabel: item.qualityLabel || item.rarity || '未知品质',
-        collection: item.collection || '未补全收藏品',
-        items: [],
-      })
-    }
-    const group = groups.get(key)
-    group.count += 1
-    group.items.push(item)
-  }
-
-  return Array.from(groups.values())
-    .map((group) => {
-      const totalPrice = group.items.reduce((sum, item) => sum + Number(item.price || 0), 0)
-      const floats = group.items
-        .map((item) => item.floatValue)
-        .filter((value) => value !== null && value !== undefined)
-      group.avgPrice = totalPrice / group.items.length
-      group.minFloat = floats.length ? Math.min(...floats) : null
-      if (!group.imageUrl) {
-        group.imageUrl = group.items.map((item) => item.imageUrl).find(Boolean) || ''
-      }
-      if (!group.wearName) {
-        group.wearName = group.items.map((item) => item.wearName).find(Boolean) || ''
-      }
-      if (!group.qualityLabel || group.qualityLabel === '未知品质') {
-        group.qualityLabel = group.items.map((item) => item.qualityLabel || item.rarity).find(Boolean) || '未知品质'
-      }
-      return group
-    })
-    .sort((a, b) => b.count - a.count || a.avgPrice - b.avgPrice)
+const inventoryItems = computed(() => {
+  return inventoryState.items || []
 })
 
 const sortedPlans = computed(() => {
@@ -187,6 +161,9 @@ const loadSessionStatus = async () => {
   try {
     const payload = await request('/api/buff/session/status')
     normalizeSession(payload)
+    if (payload?.valid) {
+      await restorePersistedInventory()
+    }
   } catch (error) {
     ElMessage.error(error.message || '读取登录状态失败')
   } finally {
@@ -217,6 +194,9 @@ const validateSession = async () => {
   try {
     const payload = await postJson('/api/buff/session/validate', {})
     normalizeSession(payload)
+    if (payload?.valid) {
+      await restorePersistedInventory()
+    }
     ElMessage.success(payload.message || '会话校验完成')
   } catch (error) {
     ElMessage.error(error.message || '会话校验失败')
@@ -247,13 +227,54 @@ const clearSession = async () => {
 }
 
 const normalizeInventory = (payload, actionLabel) => {
+  inventoryState.snapshotId = payload.snapshotId || null
   inventoryState.itemCount = payload.itemCount || 0
   inventoryState.outputPath = payload.outputPath || ''
   inventoryState.items = payload.items || []
+  inventoryState.usePersistedPaging = false
   inventoryState.lastAction = payload.message || actionLabel
   if (inventoryState.outputPath) {
     planForm.inventoryPath = inventoryState.outputPath
     inventoryForm.inventoryPath = inventoryState.outputPath
+  }
+}
+
+const applyPagedInventory = (payload) => {
+  inventoryState.snapshotId = payload.snapshotId || inventoryState.snapshotId
+  inventoryState.itemCount = payload.itemCount || 0
+  inventoryState.tradableCount = payload.tradableCount || 0
+  inventoryState.withFloatCount = payload.withFloatCount || 0
+  inventoryState.totalCost = payload.totalCost || 0
+  inventoryState.totalItems = payload.totalItems || payload.itemCount || 0
+  inventoryState.currentPage = payload.currentPage || 1
+  inventoryState.pageSize = payload.pageSize || 50
+  inventoryState.items = payload.items || []
+  inventoryState.usePersistedPaging = true
+}
+
+const loadPersistedInventoryPage = async (page = 1, snapshotId = inventoryState.snapshotId) => {
+  const payload = await postJson('/api/buff/inventory/page', {
+    snapshotId,
+    game: inventoryForm.game,
+    page,
+    pageSize: 50,
+  })
+  applyPagedInventory(payload)
+}
+
+const restorePersistedInventory = async () => {
+  loadingInventory.value = true
+  try {
+    await loadPersistedInventoryPage(1, null)
+    inventoryState.lastAction = '已从数据库载入最近一次保存的炼金素材库存'
+  } catch (error) {
+    if (String(error.message || '').includes('No persisted inventory snapshot was found')) {
+      inventoryState.lastAction = '当前没有可用的数据库库存快照，请先抓取一次 BUFF 库存。'
+      return
+    }
+    throw error
+  } finally {
+    loadingInventory.value = false
   }
 }
 
@@ -268,6 +289,9 @@ const fetchInventory = async () => {
       forceRefresh: inventoryForm.forceRefresh,
     })
     normalizeInventory(payload, '已从 BUFF 抓取并保存库存')
+    if (payload.snapshotId) {
+      await loadPersistedInventoryPage(1, payload.snapshotId)
+    }
     ElMessage.success(payload.message || `已同步 ${payload.itemCount} 件素材`)
   } catch (error) {
     ElMessage.error(error.message || '抓取库存失败')
@@ -286,6 +310,17 @@ const loadInventory = async () => {
     ElMessage.success(`已载入 ${payload.itemCount} 件素材`)
   } catch (error) {
     ElMessage.error(error.message || '读取库存失败')
+  } finally {
+    loadingInventory.value = false
+  }
+}
+
+const changeInventoryPage = async (page) => {
+  loadingInventory.value = true
+  try {
+    await loadPersistedInventoryPage(page)
+  } catch (error) {
+    ElMessage.error(error.message || '翻页失败')
   } finally {
     loadingInventory.value = false
   }
@@ -424,7 +459,15 @@ loadSessionStatus()
         </div>
       </section>
 
-      <InventoryBoard :inventory-stats="inventoryStats" :grouped-inventory="groupedInventory" />
+      <InventoryBoard
+        :inventory-stats="inventoryStats"
+        :inventory-items="inventoryItems"
+        :current-page="inventoryState.currentPage"
+        :page-size="inventoryState.pageSize"
+        :total-items="inventoryState.usePersistedPaging ? inventoryState.totalItems : inventoryItems.length"
+        :use-persisted-paging="inventoryState.usePersistedPaging"
+        @page-change="changeInventoryPage"
+      />
 
         <PlanWorkspace
           :plans="sortedPlans"

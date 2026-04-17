@@ -325,6 +325,19 @@ body {
   margin-top: 18px;
 }
 
+.inventory-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.inventory-pagination .el-pagination {
+  --el-pagination-bg-color: rgba(255, 255, 255, 0.03);
+  --el-pagination-button-color: var(--text);
+  --el-pagination-text-color: var(--muted);
+  --el-pagination-hover-color: var(--gold);
+}
+
 .material-card,
 .plan-row,
 .detail-item {
