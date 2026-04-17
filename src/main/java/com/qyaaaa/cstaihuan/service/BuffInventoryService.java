@@ -2,10 +2,14 @@ package com.qyaaaa.cstaihuan.service;
 
 import com.qyaaaa.cstaihuan.config.BuffProperties;
 import com.qyaaaa.cstaihuan.dto.FetchInventoryRequest;
+import com.qyaaaa.cstaihuan.dto.InventoryPageRequest;
+import com.qyaaaa.cstaihuan.dto.InventoryPageResponse;
 import com.qyaaaa.cstaihuan.dto.InventorySnapshotRequest;
 import com.qyaaaa.cstaihuan.dto.InventorySnapshotResponse;
+import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.InventorySnapshotRecord;
+import com.qyaaaa.cstaihuan.model.InventorySnapshotSummary;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -63,22 +67,34 @@ public class BuffInventoryService {
             return buildResponse(latest.get(), path, cachedItems, true, "CACHE", "命中本地快照，已跳过重复调用 BUFF 接口。");
         }
 
-        List<BuffItem> items = buffApiClient.fetchInventory(
-            buffProperties.getBaseUrl(),
-            cookie,
-            game,
-            pageSize,
-            maxPages
-        );
+        List<BuffItem> items;
+        try {
+            items = buffApiClient.fetchInventory(
+                buffProperties.getBaseUrl(),
+                cookie,
+                game,
+                pageSize,
+                maxPages
+            );
+        } catch (BuffRateLimitException ex) {
+            if (latest.isPresent()) {
+                List<BuffItem> cachedItems = inventorySnapshotStoreService.loadItems(latest.get().getId());
+                inventorySnapshotStoreService.touch(latest.get().getId());
+                inventoryFileService.save(path, cachedItems);
+                return buildResponse(latest.get(), path, cachedItems, true, "CACHE", "BUFF 当前限流，已回退到数据库里最近一次保存的库存快照。");
+            }
+            throw ex;
+        }
 
-        String fingerprint = buildFingerprint(items);
+        List<BuffItem> persistedItems = filterPersistedItems(items);
+        String fingerprint = buildFingerprint(persistedItems);
         if (latest.isPresent() && fingerprint.equals(latest.get().getFingerprint())) {
             inventorySnapshotStoreService.touch(latest.get().getId());
             inventoryFileService.save(path, items);
             return buildResponse(latest.get(), path, items, false, "REUSED", "远端库存无变化，已复用已有快照记录。");
         }
 
-        InventorySnapshotRecord saved = inventorySnapshotStoreService.saveSnapshot(game, fingerprint, items);
+        InventorySnapshotRecord saved = inventorySnapshotStoreService.saveSnapshot(game, fingerprint, persistedItems);
         inventoryFileService.save(path, items);
         return buildResponse(saved, path, items, false, "REMOTE", "已从 BUFF 抓取库存并写入数据库。");
     }
@@ -91,6 +107,27 @@ public class BuffInventoryService {
         Path path = Paths.get(request.getInventoryPath());
         List<BuffItem> items = inventoryFileService.load(path);
         return new InventorySnapshotResponse(null, items.size(), path.toString(), items, false, "FILE", null, "已从本地文件载入库存。");
+    }
+
+    public InventoryPageResponse loadPage(InventoryPageRequest request) {
+        String game = StringUtils.hasText(request.getGame()) ? request.getGame() : buffProperties.getGame();
+        InventorySnapshotRecord snapshot = resolveSnapshot(request.getSnapshotId(), game);
+        int page = request.getPage() == null || request.getPage().intValue() < 1 ? 1 : request.getPage().intValue();
+        int pageSize = request.getPageSize() == null || request.getPageSize().intValue() < 1 ? 50 : request.getPageSize().intValue();
+
+        InventorySnapshotSummary summary = inventorySnapshotStoreService.summarizeSnapshot(snapshot.getId());
+        InventoryPageResponse response = new InventoryPageResponse();
+        response.setSnapshotId(Long.valueOf(snapshot.getId()));
+        response.setItemCount(summary.getItemCount());
+        response.setTradableCount(summary.getTradableCount());
+        response.setWithFloatCount(summary.getWithFloatCount());
+        response.setTotalCost(summary.getTotalCost());
+        response.setTotalItems(inventorySnapshotStoreService.countItems(snapshot.getId()));
+        response.setCurrentPage(page);
+        response.setPageSize(pageSize);
+        response.setItems(inventorySnapshotStoreService.loadPagedItems(snapshot.getId(), page, pageSize));
+        response.setFetchedAt(formatTimestamp(snapshot.getCreatedAt()));
+        return response;
     }
 
     private boolean isWithinCooldown(InventorySnapshotRecord record) {
@@ -152,5 +189,30 @@ public class BuffInventoryService {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private List<BuffItem> filterPersistedItems(List<BuffItem> items) {
+        List<BuffItem> filtered = new ArrayList<BuffItem>();
+        for (BuffItem item : items) {
+            if ("covert".equals(item.getRarity())) {
+                filtered.add(item);
+            }
+        }
+        return filtered;
+    }
+
+    private InventorySnapshotRecord resolveSnapshot(Long snapshotId, String game) {
+        if (snapshotId != null) {
+            Optional<InventorySnapshotRecord> snapshot = inventorySnapshotStoreService.findById(snapshotId.longValue());
+            if (!snapshot.isPresent()) {
+                throw new IllegalArgumentException("Inventory snapshot was not found: " + snapshotId);
+            }
+            return snapshot.get();
+        }
+        Optional<InventorySnapshotRecord> latest = inventorySnapshotStoreService.findLatest(game);
+        if (!latest.isPresent()) {
+            throw new IllegalArgumentException("No persisted inventory snapshot was found.");
+        }
+        return latest.get();
     }
 }

@@ -1,5 +1,6 @@
 package com.qyaaaa.cstaihuan.service;
 
+import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -57,7 +59,14 @@ public class BuffApiClient {
         headers.set("X-Requested-With", "XMLHttpRequest");
         headers.setAccept(MediaType.parseMediaTypes("application/json, text/plain, */*"));
 
-        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
+        ResponseEntity<Map> response;
+        try {
+            response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
+        } catch (HttpClientErrorException.TooManyRequests ex) {
+            throw new BuffRateLimitException("BUFF 当前触发限流，请稍后再试。若数据库里已有库存快照，系统会优先回退到最近一次保存的数据。");
+        } catch (HttpClientErrorException ex) {
+            throw new IllegalStateException("BUFF API request failed: " + ex.getStatusCode());
+        }
         if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
             throw new IllegalStateException("BUFF API request failed: " + response.getStatusCode());
         }
@@ -126,7 +135,7 @@ public class BuffApiClient {
         merged.putAll(assetInfo);
         merged.putAll(raw);
 
-        String name = stringValue(merged, "market_hash_name", "name", "short_name");
+        String name = stringValue(merged, "name", "short_name", "market_hash_name");
         if (name == null || name.isEmpty()) {
             return null;
         }
@@ -136,6 +145,7 @@ public class BuffApiClient {
             name,
             doubleValue(merged, 0.0d, "sell_min_price", "price", "quick_price", "steam_price"),
             nullableDoubleValue(merged, "paintwear", "float_value", "goods_float"),
+            stringValue(merged, "paintwear", "float_value", "goods_float"),
             normalizeImageUrl(stringValue(assetInfo, "original_icon_url", "icon_url", "img", "image_url")),
             firstNonBlank(
                 stringValue(exteriorTag, "localized_name"),

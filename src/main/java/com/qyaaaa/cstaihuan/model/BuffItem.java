@@ -11,6 +11,8 @@ public class BuffItem {
     private double price;
     @JsonProperty("float_value")
     private Double floatValue;
+    @JsonProperty("float_value_raw")
+    private String floatValueRaw;
     @JsonProperty("image_url")
     private String imageUrl;
     @JsonProperty("wear_name")
@@ -27,11 +29,12 @@ public class BuffItem {
     public BuffItem() {
     }
 
-    public BuffItem(String assetId, String name, double price, Double floatValue, String imageUrl, String wearName, String collection, String rarity, String qualityLabel, boolean tradable, String goodsId, Map<String, Object> raw) {
+    public BuffItem(String assetId, String name, double price, Double floatValue, String floatValueRaw, String imageUrl, String wearName, String collection, String rarity, String qualityLabel, boolean tradable, String goodsId, Map<String, Object> raw) {
         this.assetId = assetId;
         this.name = name;
         this.price = price;
         this.floatValue = floatValue;
+        this.floatValueRaw = floatValueRaw;
         this.imageUrl = imageUrl;
         this.wearName = wearName;
         this.collection = collection;
@@ -43,7 +46,7 @@ public class BuffItem {
     }
 
     public BuffItem withCatalog(CatalogSkin skin) {
-        return new BuffItem(assetId, name, price, floatValue, imageUrl, wearName, skin.getCollection(), skin.getRarity(), qualityLabel, tradable, goodsId, raw);
+        return new BuffItem(assetId, name, price, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), qualityLabel, tradable, goodsId, raw);
     }
 
     public String getAssetId() {
@@ -60,6 +63,10 @@ public class BuffItem {
 
     public Double getFloatValue() {
         return floatValue;
+    }
+
+    public String getFloatValueRaw() {
+        return floatValueRaw;
     }
 
     public String getImageUrl() {
@@ -108,6 +115,10 @@ public class BuffItem {
 
     public void setFloatValue(Double floatValue) {
         this.floatValue = floatValue;
+    }
+
+    public void setFloatValueRaw(String floatValueRaw) {
+        this.floatValueRaw = floatValueRaw;
     }
 
     public void setImageUrl(String imageUrl) {
