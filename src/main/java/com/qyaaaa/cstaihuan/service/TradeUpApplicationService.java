@@ -17,11 +17,13 @@ public class TradeUpApplicationService {
     private final InventoryFileService inventoryFileService;
     private final CatalogService catalogService;
     private final TradeUpProperties tradeUpProperties;
+    private final BuffInventoryService buffInventoryService;
 
-    public TradeUpApplicationService(InventoryFileService inventoryFileService, CatalogService catalogService, TradeUpProperties tradeUpProperties) {
+    public TradeUpApplicationService(InventoryFileService inventoryFileService, CatalogService catalogService, TradeUpProperties tradeUpProperties, BuffInventoryService buffInventoryService) {
         this.inventoryFileService = inventoryFileService;
         this.catalogService = catalogService;
         this.tradeUpProperties = tradeUpProperties;
+        this.buffInventoryService = buffInventoryService;
     }
 
     public OptimizeTradeUpResponse optimize(OptimizeTradeUpRequest request) throws Exception {
@@ -32,7 +34,7 @@ public class TradeUpApplicationService {
             throw new IllegalArgumentException("catalogPath is required.");
         }
 
-        List<BuffItem> inventory = inventoryFileService.load(Paths.get(request.getInventoryPath()));
+        List<BuffItem> inventory = buffInventoryService.filterPersistedItems(inventoryFileService.load(Paths.get(request.getInventoryPath())));
         List<CatalogSkin> catalog = catalogService.load(Paths.get(request.getCatalogPath()));
 
         double saleFeeRate = request.getSaleFeeRate() == null ? tradeUpProperties.getSaleFeeRate() : request.getSaleFeeRate().doubleValue();
@@ -50,4 +52,3 @@ public class TradeUpApplicationService {
         return new OptimizeTradeUpResponse(plans);
     }
 }
-
