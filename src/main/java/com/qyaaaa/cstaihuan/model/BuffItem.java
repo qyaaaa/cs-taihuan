@@ -19,6 +19,10 @@ public class BuffItem {
     private String wearName;
     private String collection;
     private String rarity;
+    @JsonProperty("category_key")
+    private String categoryKey;
+    @JsonProperty("filter_rarity")
+    private String filterRarity;
     @JsonProperty("quality_label")
     private String qualityLabel;
     private boolean tradable = true;
@@ -29,7 +33,7 @@ public class BuffItem {
     public BuffItem() {
     }
 
-    public BuffItem(String assetId, String name, double price, Double floatValue, String floatValueRaw, String imageUrl, String wearName, String collection, String rarity, String qualityLabel, boolean tradable, String goodsId, Map<String, Object> raw) {
+    public BuffItem(String assetId, String name, double price, Double floatValue, String floatValueRaw, String imageUrl, String wearName, String collection, String rarity, String categoryKey, String filterRarity, String qualityLabel, boolean tradable, String goodsId, Map<String, Object> raw) {
         this.assetId = assetId;
         this.name = name;
         this.price = price;
@@ -39,6 +43,8 @@ public class BuffItem {
         this.wearName = wearName;
         this.collection = collection;
         this.rarity = rarity;
+        this.categoryKey = categoryKey;
+        this.filterRarity = filterRarity;
         this.qualityLabel = qualityLabel;
         this.tradable = tradable;
         this.goodsId = goodsId;
@@ -46,7 +52,7 @@ public class BuffItem {
     }
 
     public BuffItem withCatalog(CatalogSkin skin) {
-        return new BuffItem(assetId, name, price, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), qualityLabel, tradable, goodsId, raw);
+        return new BuffItem(assetId, name, price, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
     }
 
     public String getAssetId() {
@@ -85,8 +91,16 @@ public class BuffItem {
         return rarity;
     }
 
+    public String getCategoryKey() {
+        return categoryKey;
+    }
+
     public String getQualityLabel() {
         return qualityLabel;
+    }
+
+    public String getFilterRarity() {
+        return filterRarity;
     }
 
     public boolean isTradable() {
@@ -135,6 +149,14 @@ public class BuffItem {
 
     public void setRarity(String rarity) {
         this.rarity = rarity == null ? null : rarity.trim().toLowerCase();
+    }
+
+    public void setCategoryKey(String categoryKey) {
+        this.categoryKey = categoryKey == null ? null : categoryKey.trim().toLowerCase();
+    }
+
+    public void setFilterRarity(String filterRarity) {
+        this.filterRarity = filterRarity == null ? null : filterRarity.trim().toLowerCase();
     }
 
     public void setQualityLabel(String qualityLabel) {

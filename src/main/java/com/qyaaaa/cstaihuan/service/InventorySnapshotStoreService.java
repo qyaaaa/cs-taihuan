@@ -71,7 +71,7 @@ public class InventorySnapshotStoreService {
 
     public List<BuffItem> loadItems(long snapshotId) {
         return jdbcTemplate.query(
-            "SELECT asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name, collection_name, rarity, quality_label, tradable, raw_json FROM inventory_item WHERE snapshot_id = ? ORDER BY id ASC",
+            "SELECT asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name, collection_name, rarity, category_key, filter_rarity, quality_label, tradable, raw_json FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!' ORDER BY id ASC",
             new Object[] {Long.valueOf(snapshotId)},
             (rs, rowNum) -> {
                 BuffItem item = new BuffItem();
@@ -86,6 +86,8 @@ public class InventorySnapshotStoreService {
                 item.setWearName(rs.getString("wear_name"));
                 item.setCollection(rs.getString("collection_name"));
                 item.setRarity(rs.getString("rarity"));
+                item.setCategoryKey(rs.getString("category_key"));
+                item.setFilterRarity(rs.getString("filter_rarity"));
                 item.setQualityLabel(rs.getString("quality_label"));
                 item.setTradable(rs.getBoolean("tradable"));
                 item.setRaw(readRaw(rs.getString("raw_json")));
@@ -97,8 +99,8 @@ public class InventorySnapshotStoreService {
     public List<BuffItem> loadPagedItems(long snapshotId, int page, int pageSize) {
         int offset = (page - 1) * pageSize;
         return jdbcTemplate.query(
-            "SELECT asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name, collection_name, rarity, quality_label, tradable, raw_json " +
-                "FROM inventory_item WHERE snapshot_id = ? ORDER BY price DESC, id ASC LIMIT ? OFFSET ?",
+            "SELECT asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name, collection_name, rarity, category_key, filter_rarity, quality_label, tradable, raw_json " +
+                "FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!' ORDER BY price DESC, id ASC LIMIT ? OFFSET ?",
             new Object[] {Long.valueOf(snapshotId), Integer.valueOf(pageSize), Integer.valueOf(offset)},
             (rs, rowNum) -> {
                 BuffItem item = new BuffItem();
@@ -113,6 +115,8 @@ public class InventorySnapshotStoreService {
                 item.setWearName(rs.getString("wear_name"));
                 item.setCollection(rs.getString("collection_name"));
                 item.setRarity(rs.getString("rarity"));
+                item.setCategoryKey(rs.getString("category_key"));
+                item.setFilterRarity(rs.getString("filter_rarity"));
                 item.setQualityLabel(rs.getString("quality_label"));
                 item.setTradable(rs.getBoolean("tradable"));
                 item.setRaw(readRaw(rs.getString("raw_json")));
@@ -123,7 +127,7 @@ public class InventorySnapshotStoreService {
 
     public int countItems(long snapshotId) {
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM inventory_item WHERE snapshot_id = ?",
+            "SELECT COUNT(*) FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!'",
             Integer.class,
             Long.valueOf(snapshotId)
         );
@@ -132,7 +136,7 @@ public class InventorySnapshotStoreService {
 
     public InventorySnapshotSummary summarizeSnapshot(long snapshotId) {
         return jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) AS item_count, SUM(CASE WHEN tradable = 1 THEN 1 ELSE 0 END) AS tradable_count, SUM(CASE WHEN float_value IS NOT NULL THEN 1 ELSE 0 END) AS with_float_count, COALESCE(SUM(price), 0) AS total_cost FROM inventory_item WHERE snapshot_id = ?",
+            "SELECT COUNT(*) AS item_count, SUM(CASE WHEN tradable = 1 THEN 1 ELSE 0 END) AS tradable_count, SUM(CASE WHEN float_value IS NOT NULL THEN 1 ELSE 0 END) AS with_float_count, COALESCE(SUM(price), 0) AS total_cost FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!'",
             new Object[] {Long.valueOf(snapshotId)},
             (rs, rowNum) -> {
                 InventorySnapshotSummary summary = new InventorySnapshotSummary();
@@ -171,7 +175,7 @@ public class InventorySnapshotStoreService {
 
         if (!items.isEmpty()) {
             jdbcTemplate.batchUpdate(
-                "INSERT INTO inventory_item (snapshot_id, asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name, collection_name, rarity, quality_label, tradable, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO inventory_item (snapshot_id, asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name, collection_name, rarity, category_key, filter_rarity, quality_label, tradable, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 new BatchPreparedStatementSetter() {
                     public void setValues(PreparedStatement statement, int index) throws java.sql.SQLException {
                         BuffItem item = items.get(index);
@@ -190,9 +194,11 @@ public class InventorySnapshotStoreService {
                         statement.setString(9, item.getWearName());
                         statement.setString(10, item.getCollection());
                         statement.setString(11, item.getRarity());
-                        statement.setString(12, item.getQualityLabel());
-                        statement.setBoolean(13, item.isTradable());
-                        statement.setString(14, writeRaw(item.getRaw()));
+                        statement.setString(12, item.getCategoryKey());
+                        statement.setString(13, item.getFilterRarity());
+                        statement.setString(14, item.getQualityLabel());
+                        statement.setBoolean(15, item.isTradable());
+                        statement.setString(16, writeRaw(item.getRaw()));
                     }
 
                     public int getBatchSize() {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import InventoryBoard from './components/InventoryBoard.vue'
 import PlanWorkspace from './components/PlanWorkspace.vue'
@@ -63,6 +63,24 @@ const inventoryState = reactive({
   usePersistedPaging: false,
   lastAction: '尚未加载库存',
 })
+
+const normalizeInventoryItem = (item) => {
+  if (!item) {
+    return item
+  }
+  return {
+    ...item,
+    assetId: item.assetId ?? item.asset_id ?? null,
+    floatValue: item.floatValue ?? item.float_value ?? null,
+    floatValueRaw: item.floatValueRaw ?? item.float_value_raw ?? null,
+    imageUrl: item.imageUrl ?? item.image_url ?? '',
+    wearName: item.wearName ?? item.wear_name ?? '',
+    qualityLabel: item.qualityLabel ?? item.quality_label ?? '',
+    goodsId: item.goodsId ?? item.goods_id ?? '',
+    categoryKey: item.categoryKey ?? item.category_key ?? '',
+    filterRarity: item.filterRarity ?? item.filter_rarity ?? '',
+  }
+}
 
 const planState = reactive({
   plans: [],
@@ -230,7 +248,7 @@ const normalizeInventory = (payload, actionLabel) => {
   inventoryState.snapshotId = payload.snapshotId || null
   inventoryState.itemCount = payload.itemCount || 0
   inventoryState.outputPath = payload.outputPath || ''
-  inventoryState.items = payload.items || []
+  inventoryState.items = (payload.items || []).map(normalizeInventoryItem)
   inventoryState.usePersistedPaging = false
   inventoryState.lastAction = payload.message || actionLabel
   if (inventoryState.outputPath) {
@@ -248,7 +266,7 @@ const applyPagedInventory = (payload) => {
   inventoryState.totalItems = payload.totalItems || payload.itemCount || 0
   inventoryState.currentPage = payload.currentPage || 1
   inventoryState.pageSize = payload.pageSize || 50
-  inventoryState.items = payload.items || []
+  inventoryState.items = (payload.items || []).map(normalizeInventoryItem)
   inventoryState.usePersistedPaging = true
 }
 
@@ -266,7 +284,7 @@ const restorePersistedInventory = async () => {
   loadingInventory.value = true
   try {
     await loadPersistedInventoryPage(1, null)
-    inventoryState.lastAction = '已从数据库载入最近一次保存的炼金素材库存'
+    inventoryState.lastAction = '已从数据库载入最近一次保存的武器库存'
   } catch (error) {
     if (String(error.message || '').includes('No persisted inventory snapshot was found')) {
       inventoryState.lastAction = '当前没有可用的数据库库存快照，请先抓取一次 BUFF 库存。'
@@ -300,16 +318,23 @@ const fetchInventory = async () => {
   }
 }
 
-const loadInventory = async () => {
+const forceFetchInventory = async () => {
   loadingInventory.value = true
   try {
-    const payload = await postJson('/api/buff/inventory/load', {
-      inventoryPath: inventoryForm.inventoryPath,
+    const payload = await postJson('/api/buff/inventory/fetch/force', {
+      outputPath: inventoryForm.outputPath,
+      game: inventoryForm.game,
+      pageSize: inventoryForm.pageSize,
+      maxPages: inventoryForm.maxPages || null,
+      forceRefresh: true,
     })
-    normalizeInventory(payload, '已从本地文件载入库存')
-    ElMessage.success(`已载入 ${payload.itemCount} 件素材`)
+    normalizeInventory(payload, '已强制从 BUFF 抓取并保存库存')
+    if (payload.snapshotId) {
+      await loadPersistedInventoryPage(1, payload.snapshotId)
+    }
+    ElMessage.success(payload.message || `已强制同步 ${payload.itemCount} 件素材`)
   } catch (error) {
-    ElMessage.error(error.message || '读取库存失败')
+    ElMessage.error(error.message || '强制抓取库存失败')
   } finally {
     loadingInventory.value = false
   }
@@ -348,7 +373,10 @@ const optimizePlans = async () => {
   }
 }
 
-loadSessionStatus()
+onMounted(() => {
+  restorePersistedInventory().catch(() => {})
+  loadSessionStatus()
+})
 </script>
 
 <template>
@@ -406,31 +434,18 @@ loadSessionStatus()
           <div class="control-block">
             <div class="section-head">
               <span class="section-kicker">BUFF Sync</span>
-            <h2>库存采集</h2>
-          </div>
-          <el-form label-position="top" class="dense-form">
-            <div class="field-grid">
-              <el-form-item label="输出路径">
-                <el-input v-model="inventoryForm.outputPath" />
-              </el-form-item>
-              <el-form-item label="读取路径">
-                <el-input v-model="inventoryForm.inventoryPath" />
-              </el-form-item>
-              <el-form-item label="游戏">
-                <el-input v-model="inventoryForm.game" />
-              </el-form-item>
-              <el-form-item label="分页大小">
-                <el-input-number v-model="inventoryForm.pageSize" :min="1" :max="200" controls-position="right" />
-              </el-form-item>
-              <el-form-item label="强制刷新">
-                <el-switch v-model="inventoryForm.forceRefresh" inline-prompt active-text="是" inactive-text="否" />
-              </el-form-item>
+              <h2>库存采集</h2>
             </div>
+            <p class="surface-note">
+              使用当前已验证的 BUFF 会话抓取最新库存，并自动回写本地 JSON 与数据库快照。
+            </p>
+            <p class="surface-note subtle-note">
+              说明：BUFF 获取数据可能需要几分钟，分页抓取时系统会主动放慢请求节奏以降低限流概率。
+            </p>
             <div class="inline-actions">
-              <el-button type="warning" :loading="loadingInventory" @click="fetchInventory">从 BUFF 抓取</el-button>
-              <el-button plain :loading="loadingInventory" @click="loadInventory">从文件载入</el-button>
+              <el-button type="warning" :loading="loadingInventory" @click="fetchInventory">从 BUFF 获取</el-button>
+              <el-button plain :loading="loadingInventory" @click="forceFetchInventory">强制刷新</el-button>
             </div>
-          </el-form>
             <p class="surface-note">{{ inventoryState.lastAction }}</p>
           </div>
 

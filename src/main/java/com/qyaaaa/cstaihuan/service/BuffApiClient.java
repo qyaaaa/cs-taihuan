@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -18,6 +20,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
 public class BuffApiClient {
+    private static final long PAGE_REQUEST_INTERVAL_MILLIS = 5000L;
+    private static final Logger log = LoggerFactory.getLogger(BuffApiClient.class);
     private final RestTemplate restTemplate;
 
     public BuffApiClient(RestTemplate restTemplate) {
@@ -28,8 +32,10 @@ public class BuffApiClient {
         List<BuffItem> items = new ArrayList<BuffItem>();
         int page = 1;
         while (true) {
+            log.info("Requesting BUFF inventory page, game={}, page={}, pageSize={}", game, Integer.valueOf(page), Integer.valueOf(pageSize));
             Map<String, Object> payload = request(baseUrl, cookie, game, page, pageSize);
             List<BuffItem> pageItems = extractItems(payload);
+            log.info("BUFF inventory page loaded, game={}, page={}, itemCount={}", game, Integer.valueOf(page), Integer.valueOf(pageItems.size()));
             if (pageItems.isEmpty()) {
                 break;
             }
@@ -40,6 +46,8 @@ public class BuffApiClient {
             if (!hasMore(payload, page, pageSize)) {
                 break;
             }
+            // BUFF 对连续翻页请求比较敏感，主动放慢分页节奏，降低触发限流的概率。
+            sleepBeforeNextPage(page + 1);
             page++;
         }
         return items;
@@ -63,11 +71,14 @@ public class BuffApiClient {
         try {
             response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
         } catch (HttpClientErrorException.TooManyRequests ex) {
+            log.warn("BUFF request rate limited, url={}", url);
             throw new BuffRateLimitException("BUFF 当前触发限流，请稍后再试。若数据库里已有库存快照，系统会优先回退到最近一次保存的数据。");
         } catch (HttpClientErrorException ex) {
+            log.error("BUFF request failed, url={}, status={}", url, ex.getStatusCode());
             throw new IllegalStateException("BUFF API request failed: " + ex.getStatusCode());
         }
         if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            log.error("BUFF request returned invalid response, url={}, status={}", url, response.getStatusCode());
             throw new IllegalStateException("BUFF API request failed: " + response.getStatusCode());
         }
         @SuppressWarnings("unchecked")
@@ -118,6 +129,7 @@ public class BuffApiClient {
                 items.add(item);
             }
         }
+        log.info("Parsed BUFF inventory payload, rowCount={}, parsedItemCount={}", Integer.valueOf(rows.size()), Integer.valueOf(items.size()));
         return items;
     }
 
@@ -127,6 +139,8 @@ public class BuffApiClient {
         Map<String, Object> assetInfo = mapValue(asset.get("info"));
         Map<String, Object> tags = mapValue(mergeFirst(raw.get("tags"), goods.get("tags"), asset.get("tags")));
         Map<String, Object> rarityTag = mapValue(tags.get("rarity"));
+        Map<String, Object> categoryTag = mapValue(tags.get("category"));
+        Map<String, Object> weaponTag = mapValue(tags.get("weapon"));
         Map<String, Object> exteriorTag = mapValue(tags.get("exterior"));
         Map<String, Object> itemsetTag = mapValue(tags.get("itemset"));
         Map<String, Object> merged = new LinkedHashMap<String, Object>();
@@ -139,6 +153,13 @@ public class BuffApiClient {
         if (name == null || name.isEmpty()) {
             return null;
         }
+
+        String normalizedRarity = normalizeRarity(
+            firstNonBlank(
+                stringValue(rarityTag, "internal_name"),
+                stringValue(merged, "rarity", "quality")
+            )
+        );
 
         return new BuffItem(
             stringValue(merged, "assetid", "asset_id", "id", "goods_id", "name"),
@@ -155,12 +176,16 @@ public class BuffApiClient {
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(merged, "collection", "collection_name")
             ),
-            normalizeRarity(
-                firstNonBlank(
-                    stringValue(rarityTag, "internal_name"),
-                    stringValue(merged, "rarity", "quality")
-                )
+            firstNonBlank(
+                stringValue(rarityTag, "internal_name"),
+                stringValue(merged, "rarity", "quality")
             ),
+            firstNonBlank(
+                stringValue(categoryTag, "internal_name"),
+                stringValue(weaponTag, "internal_name"),
+                stringValue(merged, "category", "category_name")
+            ),
+            normalizedRarity,
             firstNonBlank(
                 stringValue(rarityTag, "localized_name"),
                 stringValue(merged, "quality_name", "quality", "rarity_name")
@@ -325,5 +350,16 @@ public class BuffApiClient {
             }
         }
         return false;
+    }
+
+    private void sleepBeforeNextPage(int nextPage) {
+        try {
+            log.info("Waiting {} ms before requesting next BUFF inventory page, nextPage={}",
+                Long.valueOf(PAGE_REQUEST_INTERVAL_MILLIS), Integer.valueOf(nextPage));
+            Thread.sleep(PAGE_REQUEST_INTERVAL_MILLIS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting to request the next BUFF inventory page.", ex);
+        }
     }
 }

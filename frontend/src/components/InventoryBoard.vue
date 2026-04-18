@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, watch, ref } from 'vue'
 
 const props = defineProps({
   inventoryStats: {
@@ -30,7 +30,6 @@ const props = defineProps({
 
 const emit = defineEmits(['page-change'])
 
-const inventoryView = ref('list')
 const localCurrentPage = ref(1)
 const pageSize = computed(() => props.pageSize || 50)
 const currentPage = computed({
@@ -80,28 +79,26 @@ const imageSource = (item) => {
   )
 }
 const floatText = (item) => {
-  if (item?.floatValueRaw) {
-    return item.floatValueRaw
+  if (item?.floatValueRaw || item?.float_value_raw) {
+    return item.floatValueRaw || item.float_value_raw
   }
-  if (item?.floatValue === null || item?.floatValue === undefined) {
+  const floatValue = item?.floatValue ?? item?.float_value
+  if (floatValue === null || floatValue === undefined) {
     return '--'
   }
-  return item.floatValue.toFixed(17).replace(/0+$/, '').replace(/\.$/, '')
+  return Number(floatValue).toFixed(17).replace(/0+$/, '').replace(/\.$/, '')
 }
 const qualityText = (item) => item?.qualityLabel || item?.raw?.tags?.rarity?.localized_name || '未知品质'
+const wearText = (item) => item?.wearName || item?.wear_name || '--'
 </script>
 
 <template>
   <section class="inventory-stage reveal-up">
-    <div class="section-head section-head-row">
+    <div class="section-head">
       <div>
         <span class="section-kicker">Inventory Board</span>
-        <h2>炼金素材库存</h2>
+        <h2>武器库存</h2>
       </div>
-      <el-radio-group v-model="inventoryView" size="small" class="view-switch">
-        <el-radio-button label="list">列表</el-radio-button>
-        <el-radio-button label="card">卡片</el-radio-button>
-      </el-radio-group>
     </div>
 
     <div class="metrics-row">
@@ -111,33 +108,7 @@ const qualityText = (item) => item?.qualityLabel || item?.raw?.tags?.rarity?.loc
       </div>
     </div>
 
-    <div v-if="inventoryView === 'list'" class="inventory-list">
-      <div class="inventory-list-head">
-        <span>饰品</span>
-        <span>品质</span>
-        <span>价格</span>
-        <span>收藏品</span>
-        <span>磨损度</span>
-      </div>
-      <button
-        v-for="item in pagedInventory"
-        :key="item.assetId || item.goodsId || item.name"
-        class="inventory-row"
-        type="button"
-      >
-        <span class="inventory-item-main">
-          <img v-if="imageSource(item)" :src="imageSource(item)" :alt="displayName(item)" class="inventory-thumb" />
-          <strong>{{ displayName(item) }}</strong>
-          <em>{{ item.wearName || '未标注磨损阶段' }}</em>
-        </span>
-        <span>{{ qualityText(item) }}</span>
-        <span>{{ currency(item.price) }}</span>
-        <span>{{ item.collection || '未补全收藏品' }}</span>
-        <span>{{ floatText(item) }}</span>
-      </button>
-    </div>
-
-    <div v-else class="inventory-cards">
+    <div class="inventory-cards">
       <article v-for="item in pagedInventory" :key="item.assetId || item.goodsId || item.name" class="material-card">
         <img v-if="imageSource(item)" :src="imageSource(item)" :alt="displayName(item)" class="material-thumb" />
         <div class="material-topline">
@@ -148,7 +119,7 @@ const qualityText = (item) => item?.qualityLabel || item?.raw?.tags?.rarity?.loc
         <p>{{ item.collection || '未补全收藏品' }}</p>
         <div class="material-meta">
           <label>磨损阶段</label>
-          <strong>{{ item.wearName || '--' }}</strong>
+          <strong>{{ wearText(item) }}</strong>
         </div>
         <div class="material-meta">
           <label>磨损度</label>

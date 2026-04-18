@@ -22,4 +22,3 @@ public class TradeUpController {
         return tradeUpApplicationService.optimize(request);
     }
 }
-
