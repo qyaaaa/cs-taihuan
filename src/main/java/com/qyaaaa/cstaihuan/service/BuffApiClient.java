@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -63,7 +64,7 @@ public class BuffApiClient {
         return request(url, cookie, baseUrl + "/market/" + game);
     }
 
-    public CatalogSkin parseCatalogSkinFromGoodsDetail(Map<String, Object> payload) {
+    public CatalogSkin parseCatalogSkinFromGoodsDetail(Map<String, Object> payload, String fallbackCollection) {
         Map<String, Object> data = mapValue(payload.get("data"));
         Map<String, Object> goodsInfo = mapValue(data.get("goods_info"));
         Map<String, Object> info = mapValue(goodsInfo.get("info"));
@@ -72,6 +73,7 @@ public class BuffApiClient {
         Map<String, Object> categoryTag = mapValue(tags.get("category"));
         Map<String, Object> weaponTag = mapValue(tags.get("weapon"));
         Map<String, Object> itemsetTag = mapValue(tags.get("itemset"));
+        Map<String, Object> weaponcaseTag = mapValue(tags.get("weaponcase"));
         Map<String, Object> merged = new LinkedHashMap<String, Object>();
         merged.putAll(info);
         merged.putAll(goodsInfo);
@@ -83,12 +85,18 @@ public class BuffApiClient {
             stringValue(merged, "category", "category_name")
         );
         if (categoryKey == null || !categoryKey.startsWith("weapon_")) {
+            log.info("Skip catalog skin because category is not weapon, categoryKey={}, goodsId={}",
+                categoryKey, firstNonBlank(stringValue(merged, "goods_id", "id")));
             return null;
         }
 
         String collection = firstNonBlank(
             stringValue(itemsetTag, "localized_name"),
-            stringValue(merged, "collection", "collection_name")
+            stringValue(weaponcaseTag, "localized_name"),
+            stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+            stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+            stringValue(merged, "collection", "collection_name"),
+            fallbackCollection
         );
         String rarity = normalizeRarity(
             firstNonBlank(
@@ -100,6 +108,8 @@ public class BuffApiClient {
             stringValue(merged, "market_hash_name", "name", "short_name")
         );
         if (name == null || collection == null || rarity == null) {
+            log.info("Skip catalog skin because required fields are missing, goodsId={}, name={}, collection={}, rarity={}, tagKeys={}, goodsInfoKeys={}, infoKeys={}",
+                firstNonBlank(stringValue(merged, "goods_id", "id")), name, collection, rarity, tags.keySet(), goodsInfo.keySet(), info.keySet());
             return null;
         }
 
@@ -152,6 +162,9 @@ public class BuffApiClient {
         } catch (HttpClientErrorException.TooManyRequests ex) {
             log.warn("BUFF request rate limited, url={}", url);
             throw new BuffRateLimitException("BUFF 当前触发限流，请稍后再试。若数据库里已有库存快照，系统会优先回退到最近一次保存的数据。");
+        } catch (ResourceAccessException ex) {
+            log.warn("BUFF request connection was reset, url={}, message={}", url, ex.getMessage());
+            throw new BuffRateLimitException("BUFF 当前连接被远端重置，通常是请求过快或风控导致。本次已尽量保留已抓到的数据，请稍后继续。");
         } catch (HttpClientErrorException ex) {
             log.error("BUFF request failed, url={}, status={}", url, ex.getStatusCode());
             throw new IllegalStateException("BUFF API request failed: " + ex.getStatusCode());

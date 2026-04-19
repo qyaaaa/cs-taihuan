@@ -166,7 +166,8 @@ curl -X POST http://localhost:8080/api/buff/inventory/page \
 curl -X POST http://localhost:8080/api/catalog/sync \
   -H 'Content-Type: application/json' \
   -d '{
-    "snapshotId": 123
+    "snapshotId": 123,
+    "maxDetailRequests": 20
   }'
 ```
 
@@ -175,7 +176,9 @@ curl -X POST http://localhost:8080/api/catalog/sync \
 - 读取数据库里的库存快照，提取其中的 `goods_id`
 - 复用后端托管的 BUFF 会话，请求 `goods/info`
 - 递归跟进 BUFF 返回的 `relative_goods`
-- 整批覆盖写入 `catalog_skin` 表
+- 每个 goods 请求之间会主动等待，默认 5 秒
+- 每次最多处理固定数量的 goods，默认 20 个；如果返回 `partial=true`，稍后继续同步即可增量补全
+- 对已经写入数据库的 Catalog 数据做增量更新，不会因为单次限流把整张 `catalog_skin` 清空
 
 运行时的方案计算和关联档位计算只读取数据库里的 catalog，不再依赖本地 `catalog.json`。
 

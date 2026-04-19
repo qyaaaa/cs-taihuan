@@ -515,7 +515,7 @@ onMounted(() => {
             方案计算默认读取数据库里最近一次保存的武器库存快照，并只使用数据库中的 catalog 目录数据。
           </p>
           <p class="surface-note subtle-note">
-            Catalog 同步会以当前库存快照里的 goods_id 为种子，递归补抓 BUFF 市场详情与关联目录数据，再统一写入数据库。
+            Catalog 同步会按当前库存快照里的 goods_id 分批补抓 BUFF 市场详情。每个 goods 请求之间都会主动等待几秒，以降低限流概率；如果本次只完成部分数据，稍后继续点一次即可增量补全。
           </p>
           <el-form label-position="top" class="dense-form">
             <div class="field-grid">
