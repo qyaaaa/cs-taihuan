@@ -1,27 +1,18 @@
 package com.qyaaaa.cstaihuan.dto;
 
 public class OptimizeTradeUpRequest {
-    private String inventoryPath;
-    private String catalogPath;
+    private Long snapshotId;
     private Integer topK;
     private Double saleFeeRate;
     private Integer maxItemsPerRarity;
     private Integer maxCombinations;
 
-    public String getInventoryPath() {
-        return inventoryPath;
+    public Long getSnapshotId() {
+        return snapshotId;
     }
 
-    public void setInventoryPath(String inventoryPath) {
-        this.inventoryPath = inventoryPath;
-    }
-
-    public String getCatalogPath() {
-        return catalogPath;
-    }
-
-    public void setCatalogPath(String catalogPath) {
-        this.catalogPath = catalogPath;
+    public void setSnapshotId(Long snapshotId) {
+        this.snapshotId = snapshotId;
     }
 
     public Integer getTopK() {
@@ -56,4 +47,3 @@ public class OptimizeTradeUpRequest {
         this.maxCombinations = maxCombinations;
     }
 }
-

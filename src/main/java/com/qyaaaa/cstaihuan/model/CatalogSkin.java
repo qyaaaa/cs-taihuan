@@ -4,8 +4,14 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class CatalogSkin {
     private String name;
+    @JsonProperty("goods_id")
+    private String goodsId;
     private String collection;
     private String rarity;
+    @JsonProperty("category_key")
+    private String categoryKey;
+    @JsonProperty("quality_label")
+    private String qualityLabel;
     @JsonProperty("min_float")
     private double minFloat;
     @JsonProperty("max_float")
@@ -28,12 +34,24 @@ public class CatalogSkin {
         return name;
     }
 
+    public String getGoodsId() {
+        return goodsId;
+    }
+
     public String getCollection() {
         return collection;
     }
 
     public String getRarity() {
         return rarity;
+    }
+
+    public String getCategoryKey() {
+        return categoryKey;
+    }
+
+    public String getQualityLabel() {
+        return qualityLabel;
     }
 
     public void setRarity(String rarity) {
@@ -68,7 +86,19 @@ public class CatalogSkin {
         this.name = name;
     }
 
+    public void setGoodsId(String goodsId) {
+        this.goodsId = goodsId;
+    }
+
     public void setCollection(String collection) {
         this.collection = collection;
+    }
+
+    public void setCategoryKey(String categoryKey) {
+        this.categoryKey = categoryKey == null ? null : categoryKey.trim().toLowerCase();
+    }
+
+    public void setQualityLabel(String qualityLabel) {
+        this.qualityLabel = qualityLabel;
     }
 }

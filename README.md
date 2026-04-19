@@ -8,6 +8,7 @@
 - 抓取 BUFF 库存时会输出本地 JSON，并把 `tags.category.internal_name` 以 `weapon_` 开头的武器类物品写入 MySQL
 - MySQL 库表结构由 Flyway 管理
 - 数据库存储图片、中文名称、磨损阶段、磨损度、收藏品、品质等展示字段
+- 汰换所需的 catalog 目录数据也由 MySQL 托管，并可基于库存快照递归补抓 BUFF 市场目录
 - 前端库存看板按单件展示武器库存，支持后端分页读取数据库结果
 - 汰换方案按手续费后期望利润排序返回
 - BUFF 限流 `429` 时，优先回退到最近一次数据库快照
@@ -90,6 +91,7 @@ trade-up:
 - MySQL 数据库：`cs_taihuan`
 - Flyway 历史表：`co_flyway_schema_history`
 - 本地会话文件：`data/buff-session.json`
+- Catalog 表：`catalog_skin`
 
 ## 登录与库存同步
 
@@ -122,7 +124,10 @@ BUFF 没有稳定公开的第三方网页扫码接口，所以当前不是 OAuth
 
 方案相关：
 
+- `POST /api/catalog/sync`
 - `POST /api/trade-up/optimize`
+- `POST /api/trade-up/next-tier`
+- `POST /api/trade-up/next-tier/persist`
 
 ### 抓取库存
 
@@ -155,14 +160,32 @@ curl -X POST http://localhost:8080/api/buff/inventory/page \
 
 这个接口返回的是数据库里已保存的武器类库存分页结果，前端库存看板默认就用它。
 
+### 从 BUFF 同步 Catalog 到数据库
+
+```bash
+curl -X POST http://localhost:8080/api/catalog/sync \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "snapshotId": 123
+  }'
+```
+
+这个接口会：
+
+- 读取数据库里的库存快照，提取其中的 `goods_id`
+- 复用后端托管的 BUFF 会话，请求 `goods/info`
+- 递归跟进 BUFF 返回的 `relative_goods`
+- 整批覆盖写入 `catalog_skin` 表
+
+运行时的方案计算和关联档位计算只读取数据库里的 catalog，不再依赖本地 `catalog.json`。
+
 ### 计算汰换
 
 ```bash
 curl -X POST http://localhost:8080/api/trade-up/optimize \
   -H 'Content-Type: application/json' \
   -d '{
-    "inventoryPath": "data/buff_inventory.json",
-    "catalogPath": "data/catalog.json",
+    "snapshotId": 123,
     "topK": 3
   }'
 ```
@@ -174,21 +197,12 @@ curl -X POST http://localhost:8080/api/trade-up/optimize \
 - 登录中心：查看 BUFF 会话状态，导入、校验、清除会话
 - 库存看板：从数据库分页读取武器类库存，逐件展示图片、中文名、品质、收藏品、磨损阶段和磨损度
 - 方案列表：按 EV 降序展示推荐方案，点击可查看合同详情
-
-## Catalog 格式
-
-`catalog.json` 需要补齐这些字段：
-
-- `name`
-- `collection`
-- `rarity`
-- `min_float`
-- `max_float`
-- `price`
+- Catalog 同步：基于最近一次库存快照和 BUFF 会话，同步 `catalog_skin`
 
 ## 注意事项
 
 - 首次接入建议先抓一次库存，确认 BUFF 返回字段结构没有变化
+- 首次使用方案计算前，需要先同步一次 `catalog_skin`
 - 旧快照不会自动补齐新字段；字段逻辑调整后，需要重新抓取库存
 - Cookie 过期后需要重新从浏览器复制并导入前端
 - 当前优化目标是“手续费后期望利润最大化”，不是“爆金概率最大化”

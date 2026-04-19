@@ -1,5 +1,8 @@
 package com.qyaaaa.cstaihuan.controller;
 
+import com.qyaaaa.cstaihuan.dto.NextTierCatalogRequest;
+import com.qyaaaa.cstaihuan.dto.NextTierCatalogResponse;
+import com.qyaaaa.cstaihuan.dto.PersistNextTierCatalogResponse;
 import com.qyaaaa.cstaihuan.dto.OptimizeTradeUpRequest;
 import com.qyaaaa.cstaihuan.dto.OptimizeTradeUpResponse;
 import com.qyaaaa.cstaihuan.service.TradeUpApplicationService;
@@ -20,5 +23,15 @@ public class TradeUpController {
     @PostMapping("/optimize")
     public OptimizeTradeUpResponse optimize(@RequestBody OptimizeTradeUpRequest request) throws Exception {
         return tradeUpApplicationService.optimize(request);
+    }
+
+    @PostMapping("/next-tier")
+    public NextTierCatalogResponse nextTier(@RequestBody NextTierCatalogRequest request) throws Exception {
+        return tradeUpApplicationService.loadNextTierCatalog(request);
+    }
+
+    @PostMapping("/next-tier/persist")
+    public PersistNextTierCatalogResponse persistNextTier(@RequestBody NextTierCatalogRequest request) throws Exception {
+        return tradeUpApplicationService.persistNextTierCatalog(request);
     }
 }
