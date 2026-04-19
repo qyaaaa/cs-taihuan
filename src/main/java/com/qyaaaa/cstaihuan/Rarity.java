@@ -25,5 +25,17 @@ public final class Rarity {
         }
         return null;
     }
-}
 
+    public static String previous(String rarity) {
+        if (rarity == null) {
+            return null;
+        }
+        String lowered = rarity.trim().toLowerCase();
+        for (int i = 0; i < ORDER.length; i++) {
+            if (ORDER[i].equals(lowered)) {
+                return i - 1 >= 0 ? ORDER[i - 1] : null;
+            }
+        }
+        return null;
+    }
+}

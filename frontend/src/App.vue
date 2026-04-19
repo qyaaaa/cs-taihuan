@@ -13,6 +13,8 @@ const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
 
 const loadingInventory = ref(false)
 const loadingPlans = ref(false)
+const loadingNextTier = ref(false)
+const loadingCatalog = ref(false)
 const loadingSession = ref(false)
 const selectedPlanIndex = ref(0)
 const sessionDialogVisible = ref(false)
@@ -41,8 +43,6 @@ const inventoryForm = reactive({
 })
 
 const planForm = reactive({
-  inventoryPath: 'data/buff_inventory.json',
-  catalogPath: 'data/catalog.json',
   topK: 8,
   saleFeeRate: null,
   maxItemsPerRarity: null,
@@ -85,6 +85,8 @@ const normalizeInventoryItem = (item) => {
 const planState = reactive({
   plans: [],
   lastAction: '尚未生成方案',
+  nextTierAction: '尚未保存关联档位冗余数据',
+  catalogAction: '尚未同步 Catalog 数据',
 })
 
 const inventoryStats = computed(() => {
@@ -139,6 +141,22 @@ const summaryRibbon = computed(() => {
   ]
 })
 
+const parseErrorText = (text, status) => {
+  const normalized = String(text || '').trim()
+  if (!normalized) {
+    return `Request failed: ${status}`
+  }
+  try {
+    const payload = JSON.parse(normalized)
+    if (payload?.message) {
+      return payload.message
+    }
+  } catch (error) {
+    // Ignore JSON parse failures and fall back to the raw response text.
+  }
+  return normalized
+}
+
 const postJson = async (url, payload) => {
   const response = await fetch(url, {
     method: 'POST',
@@ -147,7 +165,7 @@ const postJson = async (url, payload) => {
   })
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(text || `Request failed: ${response.status}`)
+    throw new Error(parseErrorText(text, response.status))
   }
   return response.json()
 }
@@ -156,7 +174,7 @@ const request = async (url, options = {}) => {
   const response = await fetch(url, options)
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(text || `Request failed: ${response.status}`)
+    throw new Error(parseErrorText(text, response.status))
   }
   if (response.status === 204) {
     return null
@@ -252,7 +270,6 @@ const normalizeInventory = (payload, actionLabel) => {
   inventoryState.usePersistedPaging = false
   inventoryState.lastAction = payload.message || actionLabel
   if (inventoryState.outputPath) {
-    planForm.inventoryPath = inventoryState.outputPath
     inventoryForm.inventoryPath = inventoryState.outputPath
   }
 }
@@ -340,6 +357,22 @@ const forceFetchInventory = async () => {
   }
 }
 
+const syncCatalog = async () => {
+  loadingCatalog.value = true
+  try {
+    const payload = await postJson('/api/catalog/sync', {
+      snapshotId: inventoryState.snapshotId,
+    })
+    planState.catalogAction = payload.message || `已同步 ${payload.itemCount} 条 Catalog 数据`
+    ElMessage.success(payload.message || `已同步 ${payload.itemCount} 条 Catalog 数据`)
+  } catch (error) {
+    const message = String(error.message || '同步 Catalog 失败')
+    ElMessage.error(message || '同步 Catalog 失败')
+  } finally {
+    loadingCatalog.value = false
+  }
+}
+
 const changeInventoryPage = async (page) => {
   loadingInventory.value = true
   try {
@@ -355,8 +388,7 @@ const optimizePlans = async () => {
   loadingPlans.value = true
   try {
     const payload = await postJson('/api/trade-up/optimize', {
-      inventoryPath: planForm.inventoryPath,
-      catalogPath: planForm.catalogPath,
+      snapshotId: inventoryState.snapshotId,
       topK: planForm.topK,
       saleFeeRate: planForm.saleFeeRate,
       maxItemsPerRarity: planForm.maxItemsPerRarity,
@@ -367,9 +399,34 @@ const optimizePlans = async () => {
     selectedPlanIndex.value = 0
     ElMessage.success(`完成方案计算，共 ${planState.plans.length} 条`)
   } catch (error) {
-    ElMessage.error(error.message || '生成方案失败')
+    const message = String(error.message || '生成方案失败')
+    if (message.includes('Catalog 数据库为空')) {
+      ElMessage.error('Catalog 数据库为空，请先点击“从 BUFF 同步 Catalog”')
+    } else {
+      ElMessage.error(message || '生成方案失败')
+    }
   } finally {
     loadingPlans.value = false
+  }
+}
+
+const persistNextTierCatalog = async () => {
+  loadingNextTier.value = true
+  try {
+    const payload = await postJson('/api/trade-up/next-tier/persist', {
+      snapshotId: inventoryState.snapshotId,
+    })
+    planState.nextTierAction = payload.message || `已保存 ${payload.itemCount} 条关联档位冗余数据`
+    ElMessage.success(payload.message || `已保存 ${payload.itemCount} 条关联档位冗余数据`)
+  } catch (error) {
+    const message = String(error.message || '保存关联档位冗余数据失败')
+    if (message.includes('Catalog 数据库为空')) {
+      ElMessage.error('Catalog 数据库为空，请先点击“从 BUFF 同步 Catalog”')
+    } else {
+      ElMessage.error(message || '保存关联档位冗余数据失败')
+    }
+  } finally {
+    loadingNextTier.value = false
   }
 }
 
@@ -454,23 +511,27 @@ onMounted(() => {
             <span class="section-kicker">Trade-Up Engine</span>
             <h2>方案计算</h2>
           </div>
+          <p class="surface-note">
+            方案计算默认读取数据库里最近一次保存的武器库存快照，并只使用数据库中的 catalog 目录数据。
+          </p>
+          <p class="surface-note subtle-note">
+            Catalog 同步会按当前库存快照里的 goods_id 分批补抓 BUFF 市场详情。每个 goods 请求之间都会主动等待几秒，以降低限流概率；如果本次只完成部分数据，稍后继续点一次即可增量补全。
+          </p>
           <el-form label-position="top" class="dense-form">
             <div class="field-grid">
-              <el-form-item label="库存路径">
-                <el-input v-model="planForm.inventoryPath" />
-              </el-form-item>
-              <el-form-item label="Catalog 路径">
-                <el-input v-model="planForm.catalogPath" />
-              </el-form-item>
               <el-form-item label="Top K">
                 <el-input-number v-model="planForm.topK" :min="1" :max="30" controls-position="right" />
               </el-form-item>
             </div>
             <div class="inline-actions">
+              <el-button plain :loading="loadingCatalog" @click="syncCatalog">从 BUFF 同步 Catalog</el-button>
               <el-button type="primary" :loading="loadingPlans" @click="optimizePlans">生成推荐方案</el-button>
+              <el-button plain :loading="loadingNextTier" @click="persistNextTierCatalog">批量保存关联档位数据</el-button>
             </div>
+            <p class="surface-note">{{ planState.catalogAction }}</p>
           </el-form>
           <p class="surface-note">{{ planState.lastAction }}</p>
+          <p class="surface-note">{{ planState.nextTierAction }}</p>
         </div>
       </section>
 

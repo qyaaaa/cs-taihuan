@@ -2,6 +2,7 @@ package com.qyaaaa.cstaihuan.service;
 
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
 import com.qyaaaa.cstaihuan.model.BuffItem;
+import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -33,7 +35,7 @@ public class BuffApiClient {
         int page = 1;
         while (true) {
             log.info("Requesting BUFF inventory page, game={}, page={}, pageSize={}", game, Integer.valueOf(page), Integer.valueOf(pageSize));
-            Map<String, Object> payload = request(baseUrl, cookie, game, page, pageSize);
+            Map<String, Object> payload = requestInventory(baseUrl, cookie, game, page, pageSize);
             List<BuffItem> pageItems = extractItems(payload);
             log.info("BUFF inventory page loaded, game={}, page={}, itemCount={}", game, Integer.valueOf(page), Integer.valueOf(pageItems.size()));
             if (pageItems.isEmpty()) {
@@ -53,17 +55,104 @@ public class BuffApiClient {
         return items;
     }
 
-    private Map<String, Object> request(String baseUrl, String cookie, String game, int page, int pageSize) {
+    public Map<String, Object> fetchGoodsDetail(String baseUrl, String cookie, String game, String goodsId) {
+        String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/goods/info")
+            .queryParam("game", game)
+            .queryParam("goods_id", goodsId)
+            .toUriString();
+        log.info("Requesting BUFF goods detail, game={}, goodsId={}", game, goodsId);
+        return request(url, cookie, baseUrl + "/market/" + game);
+    }
+
+    public CatalogSkin parseCatalogSkinFromGoodsDetail(Map<String, Object> payload, String fallbackCollection) {
+        Map<String, Object> data = mapValue(payload.get("data"));
+        Map<String, Object> goodsInfo = mapValue(data.get("goods_info"));
+        Map<String, Object> info = mapValue(goodsInfo.get("info"));
+        Map<String, Object> tags = mapValue(mergeFirst(data.get("tags"), goodsInfo.get("tags"), info.get("tags")));
+        Map<String, Object> rarityTag = mapValue(tags.get("rarity"));
+        Map<String, Object> categoryTag = mapValue(tags.get("category"));
+        Map<String, Object> weaponTag = mapValue(tags.get("weapon"));
+        Map<String, Object> itemsetTag = mapValue(tags.get("itemset"));
+        Map<String, Object> weaponcaseTag = mapValue(tags.get("weaponcase"));
+        Map<String, Object> merged = new LinkedHashMap<String, Object>();
+        merged.putAll(info);
+        merged.putAll(goodsInfo);
+        merged.putAll(data);
+
+        String categoryKey = firstNonBlank(
+            stringValue(categoryTag, "internal_name"),
+            stringValue(weaponTag, "internal_name"),
+            stringValue(merged, "category", "category_name")
+        );
+        if (categoryKey == null || !categoryKey.startsWith("weapon_")) {
+            log.info("Skip catalog skin because category is not weapon, categoryKey={}, goodsId={}",
+                categoryKey, firstNonBlank(stringValue(merged, "goods_id", "id")));
+            return null;
+        }
+
+        String collection = firstNonBlank(
+            stringValue(itemsetTag, "localized_name"),
+            stringValue(weaponcaseTag, "localized_name"),
+            stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+            stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+            stringValue(merged, "collection", "collection_name"),
+            fallbackCollection
+        );
+        String rarity = normalizeRarity(
+            firstNonBlank(
+                stringValue(rarityTag, "internal_name"),
+                stringValue(merged, "rarity", "quality")
+            )
+        );
+        String name = firstNonBlank(
+            stringValue(merged, "market_hash_name", "name", "short_name")
+        );
+        if (name == null || collection == null || rarity == null) {
+            log.info("Skip catalog skin because required fields are missing, goodsId={}, name={}, collection={}, rarity={}, tagKeys={}, goodsInfoKeys={}, infoKeys={}",
+                firstNonBlank(stringValue(merged, "goods_id", "id")), name, collection, rarity, tags.keySet(), goodsInfo.keySet(), info.keySet());
+            return null;
+        }
+
+        CatalogSkin skin = new CatalogSkin();
+        skin.setGoodsId(firstNonBlank(stringValue(merged, "goods_id", "id")));
+        skin.setName(name);
+        skin.setCollection(collection);
+        skin.setRarity(rarity);
+        skin.setCategoryKey(categoryKey);
+        skin.setQualityLabel(firstNonBlank(
+            stringValue(rarityTag, "localized_name"),
+            stringValue(merged, "quality_name", "rarity_name")
+        ));
+        skin.setPrice(doubleValue(merged, 0.0d, "sell_min_price", "quick_price", "price", "steam_price_cny"));
+
+        double[] floatRange = extractPaintwearRange(mergeFirst(data.get("paintwear_range"), goodsInfo.get("paintwear_range"), info.get("paintwear_range")));
+        skin.setMinFloat(floatRange[0]);
+        skin.setMaxFloat(floatRange[1]);
+        return skin;
+    }
+
+    public List<String> extractRelatedGoodsIds(Map<String, Object> payload) {
+        Map<String, Object> data = mapValue(payload.get("data"));
+        List<String> goodsIds = new ArrayList<String>();
+        collectRelatedGoodsIds(goodsIds, data.get("relative_goods"));
+        collectRelatedGoodsIds(goodsIds, data.get("goods_relations"));
+        return goodsIds;
+    }
+
+    private Map<String, Object> requestInventory(String baseUrl, String cookie, String game, int page, int pageSize) {
         String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/steam_inventory")
             .queryParam("game", game)
             .queryParam("page_num", page)
             .queryParam("page_size", pageSize)
             .toUriString();
+        return request(url, cookie, baseUrl + "/market/csgo");
+    }
 
+    private Map<String, Object> request(String url, String cookie, String referer) {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.COOKIE, cookie);
         headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 SpringBoot cs-taihuan");
-        headers.set(HttpHeaders.REFERER, baseUrl + "/market/csgo");
+        headers.set(HttpHeaders.REFERER, referer);
         headers.set("X-Requested-With", "XMLHttpRequest");
         headers.setAccept(MediaType.parseMediaTypes("application/json, text/plain, */*"));
 
@@ -73,6 +162,9 @@ public class BuffApiClient {
         } catch (HttpClientErrorException.TooManyRequests ex) {
             log.warn("BUFF request rate limited, url={}", url);
             throw new BuffRateLimitException("BUFF 当前触发限流，请稍后再试。若数据库里已有库存快照，系统会优先回退到最近一次保存的数据。");
+        } catch (ResourceAccessException ex) {
+            log.warn("BUFF request connection was reset, url={}, message={}", url, ex.getMessage());
+            throw new BuffRateLimitException("BUFF 当前连接被远端重置，通常是请求过快或风控导致。本次已尽量保留已抓到的数据，请稍后继续。");
         } catch (HttpClientErrorException ex) {
             log.error("BUFF request failed, url={}, status={}", url, ex.getStatusCode());
             throw new IllegalStateException("BUFF API request failed: " + ex.getStatusCode());
@@ -84,6 +176,45 @@ public class BuffApiClient {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = response.getBody();
         return payload;
+    }
+
+    private double[] extractPaintwearRange(Object value) {
+        if (value instanceof List) {
+            List<?> list = (List<?>) value;
+            if (list.size() >= 2) {
+                Double min = objectToDouble(list.get(0));
+                Double max = objectToDouble(list.get(1));
+                if (min != null && max != null) {
+                    return new double[] {min.doubleValue(), max.doubleValue()};
+                }
+            }
+        }
+        return new double[] {0.0d, 1.0d};
+    }
+
+    private void collectRelatedGoodsIds(List<String> target, Object value) {
+        if (value instanceof List) {
+            List<?> list = (List<?>) value;
+            for (Object item : list) {
+                collectRelatedGoodsIds(target, item);
+            }
+            return;
+        }
+        if (value instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> row = (Map<String, Object>) value;
+            String goodsId = firstNonBlank(
+                stringValue(row, "goods_id", "id")
+            );
+            if (goodsId != null) {
+                target.add(goodsId);
+            }
+            for (Object nested : row.values()) {
+                if (nested instanceof Map || nested instanceof List) {
+                    collectRelatedGoodsIds(target, nested);
+                }
+            }
+        }
     }
 
     private List<BuffItem> extractItems(Map<String, Object> payload) {
@@ -257,6 +388,13 @@ public class BuffApiClient {
             return null;
         }
         return Integer.valueOf(String.valueOf(value));
+    }
+
+    private static Double objectToDouble(Object value) {
+        if (value == null || String.valueOf(value).trim().isEmpty()) {
+            return null;
+        }
+        return Double.valueOf(String.valueOf(value));
     }
 
     private static String normalizeRarity(String rarity) {

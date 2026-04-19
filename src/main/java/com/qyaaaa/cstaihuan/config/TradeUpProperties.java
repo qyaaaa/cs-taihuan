@@ -32,4 +32,3 @@ public class TradeUpProperties {
         this.maxCombinations = maxCombinations;
     }
 }
-

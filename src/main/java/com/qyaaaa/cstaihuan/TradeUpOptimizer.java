@@ -38,7 +38,7 @@ public final class TradeUpOptimizer {
             CatalogSkin skin = catalogByName.get(item.getName());
             if (skin != null) {
                 enriched.add(item.withCatalog(skin));
-            } else if (item.getCollection() != null && item.getRarity() != null) {
+            } else if (item.getCollection() != null && item.getFilterRarity() != null) {
                 enriched.add(item);
             }
         }
@@ -48,16 +48,17 @@ public final class TradeUpOptimizer {
     public List<TradeUpPlan> findBestContracts(List<BuffItem> items, int topK, int maxItemsPerRarity, int maxCombinations) {
         Map<String, List<BuffItem>> byRarity = new HashMap<String, List<BuffItem>>();
         for (BuffItem item : items) {
-            if (!item.isTradable() || item.getRarity() == null || item.getCollection() == null || item.getFloatValue() == null) {
+            String contractRarity = contractRarity(item);
+            if (!item.isTradable() || contractRarity == null || item.getCollection() == null || item.getFloatValue() == null) {
                 continue;
             }
             if (!hasValidOutcomes(item)) {
                 continue;
             }
-            List<BuffItem> rows = byRarity.get(item.getRarity());
+            List<BuffItem> rows = byRarity.get(contractRarity);
             if (rows == null) {
                 rows = new ArrayList<BuffItem>();
-                byRarity.put(item.getRarity(), rows);
+                byRarity.put(contractRarity, rows);
             }
             rows.add(item);
         }
@@ -118,8 +119,15 @@ public final class TradeUpOptimizer {
     }
 
     private boolean hasValidOutcomes(BuffItem item) {
-        String targetRarity = Rarity.next(item.getRarity());
+        String targetRarity = Rarity.next(contractRarity(item));
         return targetRarity != null && byCollectionAndRarity.containsKey(key(item.getCollection(), targetRarity));
+    }
+
+    private String contractRarity(BuffItem item) {
+        if (item == null) {
+            return null;
+        }
+        return item.getFilterRarity() != null ? item.getFilterRarity() : item.getRarity();
     }
 
     private TradeUpPlan evaluateContract(String rarity, List<BuffItem> combo) {
@@ -189,4 +197,3 @@ public final class TradeUpOptimizer {
         return Math.round(value * 1000000.0d) / 1000000.0d;
     }
 }
-

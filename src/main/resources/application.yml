@@ -23,6 +23,9 @@ buff:
   page-size: 80
   timeout-millis: 15000
   fetch-cooldown-seconds: 180
+  catalog-sync:
+    request-interval-millis: 5000
+    max-detail-requests-per-run: 20
   session:
     storage-path: data/buff-session.json
 
