@@ -90,20 +90,29 @@ public class BuffApiClient {
             return null;
         }
 
-        String collection = firstNonBlank(
-            stringValue(itemsetTag, "localized_name"),
-            stringValue(weaponcaseTag, "localized_name"),
-            stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
-            stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
-            stringValue(merged, "collection", "collection_name"),
-            fallbackCollection
-        );
         String rarity = normalizeRarity(
             firstNonBlank(
                 stringValue(rarityTag, "internal_name"),
                 stringValue(merged, "rarity", "quality")
             )
         );
+        String collection = "gold".equals(rarity)
+            ? firstNonBlank(
+                stringValue(weaponcaseTag, "localized_name"),
+                stringValue(itemsetTag, "localized_name"),
+                stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(merged, "collection", "collection_name"),
+                fallbackCollection
+            )
+            : firstNonBlank(
+                stringValue(itemsetTag, "localized_name"),
+                stringValue(weaponcaseTag, "localized_name"),
+                stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(merged, "collection", "collection_name"),
+                fallbackCollection
+            );
         String name = firstNonBlank(
             stringValue(merged, "market_hash_name", "name", "short_name")
         );
@@ -404,6 +413,20 @@ public class BuffApiClient {
         String lowered = rarity.trim().toLowerCase();
         if ("ancient_weapon".equals(lowered) || "covert_weapon".equals(lowered)) {
             return "covert";
+        }
+        if ("gold".equals(lowered)
+            || "gold_item".equals(lowered)
+            || "exceedingly_rare".equals(lowered)
+            || "exceedingly_rare_item".equals(lowered)
+            || "rare_special".equals(lowered)
+            || "rare_special_item".equals(lowered)
+            || "extraordinary".equals(lowered)
+            || "extraordinary_item".equals(lowered)
+            || "contraband".equals(lowered)
+            || "contraband_weapon".equals(lowered)
+            || "gold grade".equals(lowered)
+            || "exceedingly rare".equals(lowered)) {
+            return "gold";
         }
         if ("legendary_weapon".equals(lowered) || "classified_weapon".equals(lowered)) {
             return "classified";

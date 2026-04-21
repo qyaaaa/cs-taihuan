@@ -7,7 +7,8 @@ public final class Rarity {
         "mil-spec",
         "restricted",
         "classified",
-        "covert"
+        "covert",
+        "gold"
     };
 
     private Rarity() {
