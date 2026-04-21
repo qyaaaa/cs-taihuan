@@ -3,7 +3,13 @@ package com.qyaaaa.cstaihuan.model;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
+@Getter
+@Setter
+@NoArgsConstructor
 public class BuffItem {
     @JsonProperty("asset_id")
     private String assetId;
@@ -30,9 +36,6 @@ public class BuffItem {
     private String goodsId;
     private Map<String, Object> raw = new LinkedHashMap<String, Object>();
 
-    public BuffItem() {
-    }
-
     public BuffItem(String assetId, String name, double price, Double floatValue, String floatValueRaw, String imageUrl, String wearName, String collection, String rarity, String categoryKey, String filterRarity, String qualityLabel, boolean tradable, String goodsId, Map<String, Object> raw) {
         this.assetId = assetId;
         this.name = name;
@@ -55,98 +58,6 @@ public class BuffItem {
         return new BuffItem(assetId, name, price, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
     }
 
-    public String getAssetId() {
-        return assetId;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public double getPrice() {
-        return price;
-    }
-
-    public Double getFloatValue() {
-        return floatValue;
-    }
-
-    public String getFloatValueRaw() {
-        return floatValueRaw;
-    }
-
-    public String getImageUrl() {
-        return imageUrl;
-    }
-
-    public String getWearName() {
-        return wearName;
-    }
-
-    public String getCollection() {
-        return collection;
-    }
-
-    public String getRarity() {
-        return rarity;
-    }
-
-    public String getCategoryKey() {
-        return categoryKey;
-    }
-
-    public String getQualityLabel() {
-        return qualityLabel;
-    }
-
-    public String getFilterRarity() {
-        return filterRarity;
-    }
-
-    public boolean isTradable() {
-        return tradable;
-    }
-
-    public String getGoodsId() {
-        return goodsId;
-    }
-
-    public Map<String, Object> getRaw() {
-        return raw;
-    }
-
-    public void setAssetId(String assetId) {
-        this.assetId = assetId;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public void setPrice(double price) {
-        this.price = price;
-    }
-
-    public void setFloatValue(Double floatValue) {
-        this.floatValue = floatValue;
-    }
-
-    public void setFloatValueRaw(String floatValueRaw) {
-        this.floatValueRaw = floatValueRaw;
-    }
-
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
-    }
-
-    public void setWearName(String wearName) {
-        this.wearName = wearName;
-    }
-
-    public void setCollection(String collection) {
-        this.collection = collection;
-    }
-
     public void setRarity(String rarity) {
         this.rarity = rarity == null ? null : rarity.trim().toLowerCase();
     }
@@ -157,18 +68,6 @@ public class BuffItem {
 
     public void setFilterRarity(String filterRarity) {
         this.filterRarity = filterRarity == null ? null : filterRarity.trim().toLowerCase();
-    }
-
-    public void setQualityLabel(String qualityLabel) {
-        this.qualityLabel = qualityLabel;
-    }
-
-    public void setTradable(boolean tradable) {
-        this.tradable = tradable;
-    }
-
-    public void setGoodsId(String goodsId) {
-        this.goodsId = goodsId;
     }
 
     public void setRaw(Map<String, Object> raw) {

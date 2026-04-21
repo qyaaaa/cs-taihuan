@@ -1,13 +1,8 @@
 package com.qyaaaa.cstaihuan.dto;
 
+import lombok.Data;
+
+@Data
 public class NextTierCatalogRequest {
     private Long snapshotId;
-
-    public Long getSnapshotId() {
-        return snapshotId;
-    }
-
-    public void setSnapshotId(Long snapshotId) {
-        this.snapshotId = snapshotId;
-    }
 }

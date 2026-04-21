@@ -1,14 +1,8 @@
 package com.qyaaaa.cstaihuan.dto;
 
+import lombok.Data;
+
+@Data
 public class InventorySnapshotRequest {
     private String inventoryPath;
-
-    public String getInventoryPath() {
-        return inventoryPath;
-    }
-
-    public void setInventoryPath(String inventoryPath) {
-        this.inventoryPath = inventoryPath;
-    }
 }
-
