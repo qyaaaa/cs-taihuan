@@ -18,6 +18,7 @@ const loadingCatalog = ref(false)
 const loadingSession = ref(false)
 const selectedPlanIndex = ref(0)
 const sessionDialogVisible = ref(false)
+const activePage = ref('overview')
 
 const sessionForm = reactive({
   cookie: '',
@@ -140,6 +141,82 @@ const summaryRibbon = computed(() => {
     { label: 'ROI', value: percent(plan.roi) },
   ]
 })
+
+const navItems = computed(() => [
+  {
+    key: 'overview',
+    label: '总览',
+    metric: inventoryState.snapshotId ? `#${inventoryState.snapshotId}` : '未载入',
+  },
+  {
+    key: 'inventory',
+    label: '库存',
+    metric: `${inventoryStats.value[0]?.value || '00'} 件`,
+  },
+  {
+    key: 'plans',
+    label: '方案',
+    metric: `${sortedPlans.value.length} 条`,
+  },
+  {
+    key: 'data',
+    label: '数据',
+    metric: sessionState.connected ? '已连接' : '未登录',
+  },
+])
+
+const pageMeta = computed(() => {
+  const meta = {
+    overview: {
+      kicker: 'Workbench',
+      title: '工作总览',
+      description: '查看会话、库存、Catalog 和方案状态，并从这里进入下一步操作。',
+    },
+    inventory: {
+      kicker: 'Inventory',
+      title: '炼金素材库存',
+      description: '展示数据库中最近一次保存的武器库存，保留每一件独立饰品和完整磨损信息。',
+    },
+    plans: {
+      kicker: 'Trade-Up',
+      title: 'EV 推荐方案',
+      description: '按期望价值查看推荐合同，选中方案后核对输入素材和潜在产出。',
+    },
+    data: {
+      kicker: 'Data Ops',
+      title: '会话与数据维护',
+      description: '维护 BUFF 会话、同步 Catalog，并保存关联档位冗余数据。',
+    },
+  }
+  return meta[activePage.value] || meta.overview
+})
+
+const statusCards = computed(() => [
+  {
+    label: 'BUFF 会话',
+    value: sessionState.connected ? (sessionState.valid ? '有效' : '待校验') : '未登录',
+    note: sessionState.maskedCookie || '尚未导入 Cookie',
+    target: 'data',
+  },
+  {
+    label: '库存快照',
+    value: inventoryState.snapshotId ? `#${inventoryState.snapshotId}` : '--',
+    note: inventoryState.lastAction,
+    target: 'inventory',
+  },
+  {
+    label: 'Catalog',
+    value: loadingCatalog.value ? '同步中' : '就绪',
+    note: planState.catalogAction,
+    target: 'data',
+  },
+  {
+    label: '推荐方案',
+    value: `${sortedPlans.value.length} 条`,
+    note: planState.lastAction,
+    target: 'plans',
+  },
+])
 
 const parseErrorText = (text, status) => {
   const normalized = String(text || '').trim()
@@ -438,142 +515,216 @@ onMounted(() => {
 
 <template>
   <div class="workspace-shell">
-    <div class="ambient ambient-a"></div>
-    <div class="ambient ambient-b"></div>
-
-    <header class="workspace-hero">
-      <div class="hero-copy reveal-up">
-        <p class="eyebrow">CS Trade-Up Workbench</p>
-        <h1>库存看板与 EV 方案控制台</h1>
-        <p class="hero-text">
-          前端已拆分为独立项目，围绕库存状态、方案排序和单条合同细节构建一个克制但高信息密度的炼金工作台。
-        </p>
-      </div>
-      <div class="hero-ribbon reveal-up reveal-delay">
-        <div v-for="item in summaryRibbon" :key="item.label" class="ribbon-metric">
-          <span>{{ item.label }}</span>
-          <strong>{{ item.value }}</strong>
+    <aside class="workspace-sidebar">
+      <div class="brand-lockup">
+        <span>CT</span>
+        <div>
+          <strong>CS 汰换</strong>
+          <small>Trade-Up Console</small>
         </div>
       </div>
-    </header>
 
-      <main class="workspace-grid">
-        <section class="control-strip reveal-up">
-          <div class="control-block">
-            <div class="section-head">
-              <span class="section-kicker">BUFF Session</span>
-              <h2>登录中心</h2>
-            </div>
-            <div class="session-status-panel">
-              <div class="session-chip-row">
-                <span class="session-chip" :class="{ active: sessionState.connected }">
-                  {{ sessionState.connected ? '已保存会话' : '未登录' }}
-                </span>
-                <span class="session-chip" :class="{ active: sessionState.valid }">
-                  {{ sessionState.valid ? '会话有效' : '待校验' }}
-                </span>
-              </div>
-              <strong class="session-mask">{{ sessionState.maskedCookie || '尚未导入 Cookie' }}</strong>
-              <p class="surface-note">
-                {{ sessionState.message }}
-              </p>
-              <p class="surface-note subtle-note">
-                说明：BUFF 暂无稳定公开的第三方网页扫码接口，这一版先由前端管理后端托管会话，不再要求在 yml 中手配 session。
-              </p>
-              <div class="inline-actions">
-                <el-button type="primary" :loading="loadingSession" @click="sessionDialogVisible = true">导入会话</el-button>
-                <el-button plain :loading="loadingSession" @click="validateSession">校验会话</el-button>
-                <el-button plain :loading="loadingSession" @click="clearSession">清除会话</el-button>
-              </div>
-            </div>
+      <nav class="workspace-nav" aria-label="主导航">
+        <button
+          v-for="item in navItems"
+          :key="item.key"
+          type="button"
+          class="nav-item"
+          :class="{ active: activePage === item.key }"
+          @click="activePage = item.key"
+        >
+          <span>{{ item.label }}</span>
+          <small>{{ item.metric }}</small>
+        </button>
+      </nav>
+    </aside>
+
+    <div class="workspace-main">
+      <header class="workspace-topbar reveal-up">
+        <div>
+          <p class="eyebrow">{{ pageMeta.kicker }}</p>
+          <h1>{{ pageMeta.title }}</h1>
+          <p class="page-description">{{ pageMeta.description }}</p>
+        </div>
+        <div class="session-compact" :class="{ active: sessionState.connected }">
+          <span>{{ sessionState.connected ? 'BUFF 已托管' : 'BUFF 未登录' }}</span>
+          <strong>{{ sessionState.maskedCookie || 'No session' }}</strong>
+        </div>
+      </header>
+
+      <main class="page-stack">
+        <section v-if="activePage === 'overview'" class="page-panel reveal-up">
+          <div class="overview-grid">
+            <button
+              v-for="card in statusCards"
+              :key="card.label"
+              type="button"
+              class="status-card"
+              @click="activePage = card.target"
+            >
+              <span>{{ card.label }}</span>
+              <strong>{{ card.value }}</strong>
+              <small>{{ card.note }}</small>
+            </button>
           </div>
 
-          <div class="control-block">
-            <div class="section-head">
+          <div class="overview-split">
+            <section class="operation-panel">
+              <div class="section-head">
+                <span class="section-kicker">Next Action</span>
+                <h2>常用操作</h2>
+              </div>
+              <div class="action-list">
+                <button type="button" class="action-row" @click="activePage = 'data'; sessionDialogVisible = true">
+                  <strong>导入 BUFF 会话</strong>
+                  <span>保存 Cookie 后，后端会托管后续抓取请求。</span>
+                </button>
+                <button type="button" class="action-row" @click="activePage = 'inventory'; fetchInventory()">
+                  <strong>从 BUFF 获取库存</strong>
+                  <span>抓取过程可能持续几分钟，分页请求会主动等待。</span>
+                </button>
+                <button type="button" class="action-row" @click="activePage = 'plans'; optimizePlans()">
+                  <strong>生成推荐方案</strong>
+                  <span>读取数据库库存和 catalog 数据，按 EV 排序。</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="operation-panel">
+              <div class="section-head">
+                <span class="section-kicker">Best Plan</span>
+                <h2>方案摘要</h2>
+              </div>
+              <div class="hero-ribbon">
+                <div v-for="item in summaryRibbon" :key="item.label" class="ribbon-metric">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section v-if="activePage === 'inventory'" class="page-panel reveal-up">
+          <div class="page-toolbar">
+            <div>
               <span class="section-kicker">BUFF Sync</span>
               <h2>库存采集</h2>
+              <p class="surface-note">使用当前 BUFF 会话抓取最新库存，并写入数据库快照。</p>
+              <p class="surface-note subtle-note">BUFF 获取数据可能需要几分钟，分页抓取时系统会主动放慢请求节奏。</p>
             </div>
-            <p class="surface-note">
-              使用当前已验证的 BUFF 会话抓取最新库存，并自动回写本地 JSON 与数据库快照。
-            </p>
-            <p class="surface-note subtle-note">
-              说明：BUFF 获取数据可能需要几分钟，分页抓取时系统会主动放慢请求节奏以降低限流概率。
-            </p>
             <div class="inline-actions">
               <el-button type="warning" :loading="loadingInventory" @click="fetchInventory">从 BUFF 获取</el-button>
               <el-button plain :loading="loadingInventory" @click="forceFetchInventory">强制刷新</el-button>
             </div>
-            <p class="surface-note">{{ inventoryState.lastAction }}</p>
           </div>
+          <p class="surface-note toolbar-note">{{ inventoryState.lastAction }}</p>
 
-          <div class="control-block">
-          <div class="section-head">
-            <span class="section-kicker">Trade-Up Engine</span>
-            <h2>方案计算</h2>
-          </div>
-          <p class="surface-note">
-            方案计算默认读取数据库里最近一次保存的武器库存快照，并只使用数据库中的 catalog 目录数据。
-          </p>
-          <p class="surface-note subtle-note">
-            Catalog 同步会按当前库存快照里的 goods_id 分批补抓 BUFF 市场详情。每个 goods 请求之间都会主动等待几秒，以降低限流概率；如果本次只完成部分数据，稍后继续点一次即可增量补全。
-          </p>
-          <el-form label-position="top" class="dense-form">
-            <div class="field-grid">
+          <InventoryBoard
+            :inventory-stats="inventoryStats"
+            :inventory-items="inventoryItems"
+            :current-page="inventoryState.currentPage"
+            :page-size="inventoryState.pageSize"
+            :total-items="inventoryState.usePersistedPaging ? inventoryState.totalItems : inventoryItems.length"
+            :use-persisted-paging="inventoryState.usePersistedPaging"
+            @page-change="changeInventoryPage"
+          />
+        </section>
+
+        <section v-if="activePage === 'plans'" class="page-panel reveal-up">
+          <div class="page-toolbar">
+            <div>
+              <span class="section-kicker">Trade-Up Engine</span>
+              <h2>方案计算</h2>
+              <p class="surface-note">方案计算读取数据库里最近一次保存的武器库存快照，并使用数据库中的 catalog 数据。</p>
+            </div>
+            <el-form label-position="top" class="plan-toolbar-form">
               <el-form-item label="Top K">
                 <el-input-number v-model="planForm.topK" :min="1" :max="30" controls-position="right" />
               </el-form-item>
-            </div>
-            <div class="inline-actions">
-              <el-button plain :loading="loadingCatalog" @click="syncCatalog">从 BUFF 同步 Catalog</el-button>
               <el-button type="primary" :loading="loadingPlans" @click="optimizePlans">生成推荐方案</el-button>
-              <el-button plain :loading="loadingNextTier" @click="persistNextTierCatalog">批量保存关联档位数据</el-button>
-            </div>
-            <p class="surface-note">{{ planState.catalogAction }}</p>
-          </el-form>
-          <p class="surface-note">{{ planState.lastAction }}</p>
-          <p class="surface-note">{{ planState.nextTierAction }}</p>
-        </div>
-      </section>
-
-      <InventoryBoard
-        :inventory-stats="inventoryStats"
-        :inventory-items="inventoryItems"
-        :current-page="inventoryState.currentPage"
-        :page-size="inventoryState.pageSize"
-        :total-items="inventoryState.usePersistedPaging ? inventoryState.totalItems : inventoryItems.length"
-        :use-persisted-paging="inventoryState.usePersistedPaging"
-        @page-change="changeInventoryPage"
-      />
-
-        <PlanWorkspace
-          :plans="sortedPlans"
-          :selected-plan="selectedPlan"
-          :selected-plan-index="selectedPlanIndex"
-          @select-plan="selectedPlanIndex = $event"
-        />
-      </main>
-
-      <el-dialog
-        v-model="sessionDialogVisible"
-        title="导入 BUFF 会话"
-        width="560px"
-        class="session-dialog"
-      >
-        <p class="dialog-copy">
-          先在浏览器登录 BUFF，然后把请求头里的完整 Cookie 粘贴到这里。保存后由后端托管，库存抓取会自动复用它。
-        </p>
-        <el-input
-          v-model="sessionForm.cookie"
-          type="textarea"
-          :rows="8"
-          placeholder="session=...; csrf_token=...; Device-Id=..."
-        />
-        <template #footer>
-          <div class="dialog-actions">
-            <el-button @click="sessionDialogVisible = false">取消</el-button>
-            <el-button type="primary" :loading="loadingSession" @click="saveSession">保存会话</el-button>
+            </el-form>
           </div>
-        </template>
-      </el-dialog>
+          <p class="surface-note toolbar-note">{{ planState.lastAction }}</p>
+
+          <PlanWorkspace
+            :plans="sortedPlans"
+            :selected-plan="selectedPlan"
+            :selected-plan-index="selectedPlanIndex"
+            @select-plan="selectedPlanIndex = $event"
+          />
+        </section>
+
+        <section v-if="activePage === 'data'" class="page-panel reveal-up">
+          <div class="data-grid">
+            <section class="operation-panel">
+              <div class="section-head">
+                <span class="section-kicker">BUFF Session</span>
+                <h2>登录中心</h2>
+              </div>
+              <div class="session-status-panel">
+                <div class="session-chip-row">
+                  <span class="session-chip" :class="{ active: sessionState.connected }">
+                    {{ sessionState.connected ? '已保存会话' : '未登录' }}
+                  </span>
+                  <span class="session-chip" :class="{ active: sessionState.valid }">
+                    {{ sessionState.valid ? '会话有效' : '待校验' }}
+                  </span>
+                </div>
+                <strong class="session-mask">{{ sessionState.maskedCookie || '尚未导入 Cookie' }}</strong>
+                <p class="surface-note">{{ sessionState.message }}</p>
+                <p class="surface-note subtle-note">
+                  BUFF 暂无稳定公开的第三方网页扫码接口，这一版先由前端管理后端托管会话，不再要求在 yml 中手配 session。
+                </p>
+                <div class="inline-actions">
+                  <el-button type="primary" :loading="loadingSession" @click="sessionDialogVisible = true">导入会话</el-button>
+                  <el-button plain :loading="loadingSession" @click="validateSession">校验会话</el-button>
+                  <el-button plain :loading="loadingSession" @click="clearSession">清除会话</el-button>
+                </div>
+              </div>
+            </section>
+
+            <section class="operation-panel">
+              <div class="section-head">
+                <span class="section-kicker">Catalog</span>
+                <h2>目录同步</h2>
+              </div>
+              <p class="surface-note">
+                Catalog 同步会按当前库存快照里的 goods_id 分批补抓 BUFF 市场详情。每个 goods 请求之间都会主动等待几秒，以降低限流概率。
+              </p>
+              <div class="inline-actions">
+                <el-button plain :loading="loadingCatalog" @click="syncCatalog">从 BUFF 同步 Catalog</el-button>
+                <el-button plain :loading="loadingNextTier" @click="persistNextTierCatalog">保存关联档位数据</el-button>
+              </div>
+              <p class="surface-note">{{ planState.catalogAction }}</p>
+              <p class="surface-note">{{ planState.nextTierAction }}</p>
+            </section>
+          </div>
+        </section>
+      </main>
     </div>
+
+    <el-dialog
+      v-model="sessionDialogVisible"
+      title="导入 BUFF 会话"
+      width="560px"
+      class="session-dialog"
+    >
+      <p class="dialog-copy">
+        先在浏览器登录 BUFF，然后把请求头里的完整 Cookie 粘贴到这里。保存后由后端托管，库存抓取会自动复用它。
+      </p>
+      <el-input
+        v-model="sessionForm.cookie"
+        type="textarea"
+        :rows="8"
+        placeholder="session=...; csrf_token=...; Device-Id=..."
+      />
+      <template #footer>
+        <div class="dialog-actions">
+          <el-button @click="sessionDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="loadingSession" @click="saveSession">保存会话</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
 </template>
