@@ -1,46 +1,50 @@
-# cs-taihuan
+# CS 汰换工作台
 
-基于 BUFF 账号库存数据，自动筛选更优的 CS 汰换方案。当前实现为 `Spring Boot + Maven + Java 8` 后端，前端为独立的 `Vue 3 + Element Plus` 项目。
+基于 BUFF 账号库存数据，自动保存炼金素材库存、同步市场目录数据，并按期望值推荐 CS 汰换方案。
 
-## 功能概览
+当前项目由两部分组成：
 
-- BUFF 会话由后端托管，前端可导入、校验、清除登录态
-- 抓取 BUFF 库存时会输出本地 JSON，并把 `tags.category.internal_name` 以 `weapon_` 开头的武器类物品写入 MySQL
-- MySQL 库表结构由 Flyway 管理
-- 数据库存储图片、中文名称、磨损阶段、磨损度、收藏品、品质等展示字段
-- 汰换所需的 catalog 目录数据也由 MySQL 托管，并可基于库存快照递归补抓 BUFF 市场目录
-- 前端库存看板按单件展示武器库存，支持后端分页读取数据库结果
-- 汰换方案按手续费后期望利润排序返回
-- BUFF 限流 `429` 时，优先回退到最近一次数据库快照
+- 后端：`Spring Boot + Maven + Java 8`
+- 前端：独立 `Vue 3 + Element Plus` 项目
 
-## 项目结构
+## 项目能力
 
-```text
-src/main/java/com/qyaaaa/cstaihuan
-  ├── config
-  ├── controller
-  ├── dto
-  ├── exception
-  ├── model
-  └── service
-src/main/resources
-  ├── application.yml
-  └── db/migration
-frontend
-  ├── src
-  ├── index.html
-  └── vite.config.js
+- 前端导入 BUFF Cookie，后端托管会话，不再需要在 `application.yml` 手动配置 session。
+- 库存抓取会写入 MySQL，并只保留 `category_key` 以 `weapon_` 开头的武器类物品。
+- 库存展示按单件饰品展示，不折叠同名物品，保留图片、中文名、磨损阶段、磨损度、收藏品、品质等字段。
+- 库存抓取和目录同步是异步任务，前端可查看任务进度、当前页数、处理数量、限流提示和任务日志。
+- 目录数据从 BUFF/数据库生成并落库到 `catalog_skin`，方案计算不再依赖本地 `catalog.json`。
+- 方案计算默认展示期望值前十，并支持常规 10 合 1 与 `covert -> gold` 五合一规则。
+
+## 使用流程图
+
+```mermaid
+flowchart TD
+    A["启动 MySQL"] --> B["启动 Spring Boot 后端"]
+    B --> C["启动 Vue 前端"]
+    C --> D["导入 BUFF Cookie"]
+    D --> E["从 BUFF 获取库存"]
+    E --> F["数据库保存武器库存快照"]
+    F --> G["从 BUFF 同步目录数据"]
+    G --> H["保存关联档位数据"]
+    H --> I["生成期望值前十方案"]
 ```
 
-## 快速开始
+## 快速启动
 
-后端启动：
+### 后端
 
 ```bash
 mvn spring-boot:run
 ```
 
-前端启动：
+默认后端地址：
+
+```text
+http://localhost:8080
+```
+
+### 前端
 
 ```bash
 cd frontend
@@ -48,32 +52,34 @@ npm install
 npm run dev
 ```
 
-默认前端地址是 [http://localhost:5173](http://localhost:5173)，通过 Vite 代理访问后端接口。
+默认前端地址：
 
-## 配置
+```text
+http://localhost:5173
+```
 
-配置文件在 [application.yml](/Users/qiaoyu/project/cs-taihuan/src/main/resources/application.yml)。
+## 数据库配置
+
+默认使用 MySQL 8，库名为 `cs_taihuan`，Flyway 管理表结构。
+
+配置文件位置：
+
+[src/main/resources/application.yml](/Users/qiaoyu/project/cs-taihuan/src/main/resources/application.yml)
+
+核心配置示例：
 
 ```yml
 spring:
   datasource:
-    type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:mysql://mc-mysql:3306/cs_taihuan?characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowMultiQueries=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Asia/Shanghai
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://mc-mysql:3306/cs_taihuan?characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
     password: abc123_
   flyway:
     enabled: true
-    user: root
-    password: abc123_
-    url: jdbc:mysql://mc-mysql:3306/cs_taihuan?characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowMultiQueries=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Asia/Shanghai
     table: co_flyway_schema_history
-    baseline-version: 0
-    baseline-on-migrate: true
 
 buff:
   base-url: https://buff.163.com
-  game: csgo
   page-size: 80
   fetch-cooldown-seconds: 180
   session:
@@ -85,128 +91,55 @@ trade-up:
   max-combinations: 25000
 ```
 
-抓取相关数据默认会落到：
+## 文档入口
 
-- 本地 JSON：`data/buff_inventory.json`
-- MySQL 数据库：`cs_taihuan`
-- Flyway 历史表：`co_flyway_schema_history`
-- 本地会话文件：`data/buff-session.json`
-- Catalog 表：`catalog_skin`
+- [使用手册](docs/usage-guide.md)：从登录、抓库存、同步目录到生成方案的完整图文流程。
+- [汰换规则](docs/trade-up-rules.md)：方案计算公式、概率、磨损、手续费和五合一规则。
+- [BUFF 饰品字段样例](docs/buff-item-sample.md)：库存字段来源、落库字段和前端展示字段说明。
 
-## 登录与库存同步
+## 常用页面
 
-推荐通过前端登录中心导入浏览器里的 BUFF Cookie，由后端统一托管。
+```mermaid
+flowchart LR
+    A["总览"] --> B["库存看板"]
+    A --> C["期望值推荐方案"]
+    A --> D["会话与数据维护"]
+    D --> E["登录中心"]
+    D --> F["数据任务"]
+    D --> G["任务进度 / 日志"]
+```
 
-当前登录方案是：
-
-- 前端负责展示登录状态和导入 Cookie
-- 后端负责保存、校验和复用 BUFF session
-- 主动抓取库存时默认会请求 BUFF 校验最新数据
-- 仅在显式关闭 `forceRefresh` 时，才优先复用最近快照
-- 若 BUFF 返回 `429 Too Many Requests`，优先回退到最近一次数据库快照
-
-BUFF 没有稳定公开的第三方网页扫码接口，所以当前不是 OAuth/扫码直连模式。
+- `总览`：查看当前会话、库存快照、目录数据、方案数量。
+- `库存`：读取数据库中最近一次保存的武器库存，支持分页。
+- `方案`：生成并查看期望值前十的推荐方案。
+- `数据`：导入 BUFF 会话、抓取库存、强制刷新、同步目录数据、查看任务日志。
 
 ## 常用接口
 
-会话相关：
+会话：
 
 - `GET /api/buff/session/status`
 - `POST /api/buff/session/import`
 - `POST /api/buff/session/validate`
 - `DELETE /api/buff/session`
 
-库存相关：
+异步任务：
 
-- `POST /api/buff/inventory/fetch`
-- `POST /api/buff/inventory/load`
+- `GET /api/tasks/{taskId}`
+- `POST /api/buff/inventory/fetch/task`
+- `POST /api/buff/inventory/fetch/force/task`
+- `POST /api/catalog/sync/task`
+
+库存和方案：
+
 - `POST /api/buff/inventory/page`
-
-方案相关：
-
-- `POST /api/catalog/sync`
-- `POST /api/trade-up/optimize`
-- `POST /api/trade-up/next-tier`
 - `POST /api/trade-up/next-tier/persist`
-
-### 抓取库存
-
-```bash
-curl -X POST http://localhost:8080/api/buff/inventory/fetch \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "outputPath": "data/buff_inventory.json",
-    "game": "csgo",
-    "forceRefresh": true
-  }'
-```
-
-返回里会包含这些关键信息：
-
-- 是否命中缓存
-- 数据来源：`CACHE`、`REUSED`、`REMOTE`
-- 当前快照 `snapshotId`
-
-### 数据库分页读取库存
-
-```bash
-curl -X POST http://localhost:8080/api/buff/inventory/page \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "page": 1,
-    "pageSize": 50
-  }'
-```
-
-这个接口返回的是数据库里已保存的武器类库存分页结果，前端库存看板默认就用它。
-
-### 从 BUFF 同步 Catalog 到数据库
-
-```bash
-curl -X POST http://localhost:8080/api/catalog/sync \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "snapshotId": 123,
-    "maxDetailRequests": 20
-  }'
-```
-
-这个接口会：
-
-- 读取数据库里的库存快照，提取其中的 `goods_id`
-- 复用后端托管的 BUFF 会话，请求 `goods/info`
-- 递归跟进 BUFF 返回的 `relative_goods`
-- 每个 goods 请求之间会主动等待，默认 5 秒
-- 每次最多处理固定数量的 goods，默认 20 个；如果返回 `partial=true`，稍后继续同步即可增量补全
-- 对已经写入数据库的 Catalog 数据做增量更新，不会因为单次限流把整张 `catalog_skin` 清空
-
-运行时的方案计算和关联档位计算只读取数据库里的 catalog，不再依赖本地 `catalog.json`。
-
-### 计算汰换
-
-```bash
-curl -X POST http://localhost:8080/api/trade-up/optimize \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "snapshotId": 123,
-    "topK": 3
-  }'
-```
-
-## 前端页面
-
-启动前后端后访问 [http://localhost:5173](http://localhost:5173)，页面包含：
-
-- 登录中心：查看 BUFF 会话状态，导入、校验、清除会话
-- 库存看板：从数据库分页读取武器类库存，逐件展示图片、中文名、品质、收藏品、磨损阶段和磨损度
-- 方案列表：按 EV 降序展示推荐方案，点击可查看合同详情
-- Catalog 同步：基于最近一次库存快照和 BUFF 会话，同步 `catalog_skin`
+- `POST /api/trade-up/optimize`
 
 ## 注意事项
 
-- 首次接入建议先抓一次库存，确认 BUFF 返回字段结构没有变化
-- 首次使用方案计算前，需要先同步一次 `catalog_skin`
-- 旧快照不会自动补齐新字段；字段逻辑调整后，需要重新抓取库存
-- Cookie 过期后需要重新从浏览器复制并导入前端
-- 当前优化目标是“手续费后期望利润最大化”，不是“爆金概率最大化”
-- 前端基于 Vite，建议 Node.js 18+
+- 首次使用需要先导入 BUFF Cookie，再抓取库存。
+- 首次生成方案前，需要先同步目录数据并保存关联档位数据。
+- BUFF 接口可能限流，系统会在分页或详情请求之间主动等待，并在前端展示任务进度。
+- Cookie 过期后需要重新从浏览器复制并导入。
+- 字段逻辑调整后，旧库存快照不会自动补齐新字段，建议重新抓取库存。
