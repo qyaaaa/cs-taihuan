@@ -96,7 +96,7 @@ const wearText = (item) => item?.wearName || item?.wear_name || '--'
   <section class="inventory-stage reveal-up">
     <div class="section-head">
       <div>
-        <span class="section-kicker">Inventory Board</span>
+        <span class="section-kicker">库存看板</span>
         <h2>武器库存</h2>
       </div>
     </div>

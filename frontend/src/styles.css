@@ -317,8 +317,191 @@ button {
   margin-top: -4px;
 }
 
+.task-progress-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.task-progress-panel.running,
+.task-progress-panel.pending {
+  border-color: rgba(213, 154, 69, 0.34);
+  background: var(--accent-soft);
+}
+
+.task-progress-panel.succeeded {
+  border-color: rgba(121, 184, 145, 0.35);
+  background: rgba(121, 184, 145, 0.1);
+}
+
+.task-progress-panel.failed {
+  border-color: rgba(216, 114, 101, 0.42);
+  background: rgba(216, 114, 101, 0.1);
+}
+
+.task-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.task-progress-head strong,
+.task-progress-head span {
+  display: block;
+}
+
+.task-progress-head span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-progress-head em {
+  color: var(--muted);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+}
+
+.danger-note {
+  color: var(--danger);
+}
+
+.task-console-panel {
+  grid-column: 1 / -1;
+}
+
+.task-console-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.task-console-head .surface-note {
+  max-width: 520px;
+  margin-top: 0;
+  text-align: right;
+}
+
+.task-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.task-monitor-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 42%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.task-monitor-meta,
+.task-log-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-empty-state {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+}
+
+.task-empty-state strong {
+  color: var(--text);
+}
+
+.task-log-panel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.task-log-title {
+  align-items: center;
+}
+
+.task-log-title strong {
+  color: var(--text);
+}
+
+.task-log-list {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  margin: 12px 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.task-log-list li {
+  display: grid;
+  grid-template-columns: 82px 112px 72px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-left: 2px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.task-log-list li.running,
+.task-log-list li.pending {
+  border-left-color: var(--accent);
+}
+
+.task-log-list li.succeeded {
+  border-left-color: var(--good);
+}
+
+.task-log-list li.failed {
+  border-left-color: var(--danger);
+}
+
+.task-log-list time,
+.task-log-list span,
+.task-log-list strong {
+  color: var(--muted);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.task-log-list strong {
+  color: var(--text);
+}
+
+.task-log-list p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .action-list {
   display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.data-job-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 16px;
 }
@@ -335,9 +518,14 @@ button {
   cursor: pointer;
 }
 
-.action-row:hover {
+.action-row:hover:not(:disabled) {
   border-color: var(--line-strong);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.action-row:disabled {
+  cursor: wait;
+  opacity: 0.64;
 }
 
 .action-row span {
@@ -712,8 +900,19 @@ button {
   .plans-layout,
   .overview-split,
   .data-grid,
+  .data-job-grid,
+  .task-overview-grid,
   .detail-columns {
     grid-template-columns: 1fr;
+  }
+
+  .task-console-head {
+    display: grid;
+  }
+
+  .task-console-head .surface-note {
+    max-width: none;
+    text-align: left;
   }
 }
 
@@ -780,5 +979,14 @@ button {
 
   .material-thumb {
     height: 170px;
+  }
+
+  .task-log-list li {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .task-log-list p {
+    white-space: normal;
   }
 }

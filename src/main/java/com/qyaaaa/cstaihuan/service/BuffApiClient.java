@@ -31,13 +31,28 @@ public class BuffApiClient {
     }
 
     public List<BuffItem> fetchInventory(String baseUrl, String cookie, String game, int pageSize, Integer maxPages) {
+        return fetchInventory(baseUrl, cookie, game, pageSize, maxPages, null);
+    }
+
+    public List<BuffItem> fetchInventory(String baseUrl, String cookie, String game, int pageSize, Integer maxPages, AsyncTaskService.TaskProgress progress) {
         List<BuffItem> items = new ArrayList<BuffItem>();
         int page = 1;
+        Integer totalPages = maxPages;
         while (true) {
+            if (progress != null) {
+                progress.update(progressPercent(page - 1, totalPages), Integer.valueOf(page), totalPages, "正在请求 BUFF 库存第 " + page + " 页。");
+            }
             log.info("Requesting BUFF inventory page, game={}, page={}, pageSize={}", game, Integer.valueOf(page), Integer.valueOf(pageSize));
             Map<String, Object> payload = requestInventory(baseUrl, cookie, game, page, pageSize);
             List<BuffItem> pageItems = extractItems(payload);
+            Integer payloadTotalPages = totalPages(payload, pageSize);
+            if (payloadTotalPages != null) {
+                totalPages = maxPages == null ? payloadTotalPages : Integer.valueOf(Math.min(maxPages.intValue(), payloadTotalPages.intValue()));
+            }
             log.info("BUFF inventory page loaded, game={}, page={}, itemCount={}", game, Integer.valueOf(page), Integer.valueOf(pageItems.size()));
+            if (progress != null) {
+                progress.update(progressPercent(page, totalPages), Integer.valueOf(page), totalPages, "已读取第 " + page + " 页，累计 " + (items.size() + pageItems.size()) + " 件原始库存。");
+            }
             if (pageItems.isEmpty()) {
                 break;
             }
@@ -49,7 +64,7 @@ public class BuffApiClient {
                 break;
             }
             // BUFF 对连续翻页请求比较敏感，主动放慢分页节奏，降低触发限流的概率。
-            sleepBeforeNextPage(page + 1);
+            sleepBeforeNextPage(page + 1, progress);
             page++;
         }
         return items;
@@ -354,6 +369,30 @@ public class BuffApiClient {
         return false;
     }
 
+    private Integer totalPages(Map<String, Object> payload, int pageSize) {
+        Object dataObj = payload.get("data");
+        if (dataObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) dataObj;
+            Integer totalPage = integerValue(data.get("total_page"));
+            if (totalPage != null) {
+                return totalPage;
+            }
+            Integer totalCount = integerValue(data.get("total_count"));
+            if (totalCount != null) {
+                return Integer.valueOf((int) Math.ceil((double) totalCount.intValue() / (double) pageSize));
+            }
+        }
+        return null;
+    }
+
+    private int progressPercent(int currentPage, Integer totalPages) {
+        if (totalPages == null || totalPages.intValue() <= 0) {
+            return Math.min(90, currentPage * 10);
+        }
+        return Math.min(90, (int) Math.floor((double) currentPage * 90.0d / (double) totalPages.intValue()));
+    }
+
     private static Map<String, Object> mapValue(Object value) {
         if (value instanceof Map) {
             @SuppressWarnings("unchecked")
@@ -513,10 +552,13 @@ public class BuffApiClient {
         return false;
     }
 
-    private void sleepBeforeNextPage(int nextPage) {
+    private void sleepBeforeNextPage(int nextPage, AsyncTaskService.TaskProgress progress) {
         try {
             log.info("Waiting {} ms before requesting next BUFF inventory page, nextPage={}",
                 Long.valueOf(PAGE_REQUEST_INTERVAL_MILLIS), Integer.valueOf(nextPage));
+            if (progress != null) {
+                progress.message("等待 " + (PAGE_REQUEST_INTERVAL_MILLIS / 1000L) + " 秒后继续请求第 " + nextPage + " 页，降低 BUFF 限流概率。");
+            }
             Thread.sleep(PAGE_REQUEST_INTERVAL_MILLIS);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
