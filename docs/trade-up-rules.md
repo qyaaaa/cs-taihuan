@@ -11,7 +11,7 @@
 - 输入饰品必须可交易。
 - 输入饰品必须有磨损值。
 - 输入饰品必须有收藏品信息。
-- 输入饰品必须能在 Catalog 中找到对应收藏品的下一档产物。
+- 输入饰品必须能在目录数据中找到对应收藏品的下一档产物。
 
 ## 品质档位
 
@@ -106,8 +106,8 @@ B 中每个金色产物概率 = (2 / 5) / 1
 项目当前规则：
 
 - 输入隐秘皮肤会优先读取库存原始数据中的 `tags.weaponcase.localized_name` 作为金色上级来源。
-- 金色 Catalog 产物会优先使用 BUFF 详情中的 `tags.weaponcase.localized_name` 作为归属来源。
-- 只有输入的上级来源和金色产物的上级来源一致时，才参与概率和 EV 计算。
+- 金色目录产物会优先使用 BUFF 详情中的 `tags.weaponcase.localized_name` 作为归属来源。
+- 只有输入的上级来源和金色产物的上级来源一致时，才参与概率和期望值计算。
 - StatTrak 输入只匹配 StatTrak 金色产物。
 - 普通输入只匹配普通金色产物。
 
@@ -133,7 +133,7 @@ B 中每个金色产物概率 = (2 / 5) / 1
 
 ## 价格选择
 
-Catalog 表中可能保存了同一皮肤的多个磨损阶段价格，例如：
+目录表中可能保存了同一皮肤的多个磨损阶段价格，例如：
 
 - Factory New
 - Minimal Wear
@@ -145,7 +145,7 @@ Catalog 表中可能保存了同一皮肤的多个磨损阶段价格，例如：
 
 如果没有精确命中磨损区间，会选择与目标磨损最接近的价格行作为兜底。
 
-## EV 计算
+## 期望值计算
 
 每个产物先扣除销售手续费：
 
@@ -171,10 +171,10 @@ Catalog 表中可能保存了同一皮肤的多个磨损阶段价格，例如：
 期望利润 = 期望产出价值 - 输入成本
 ```
 
-ROI：
+收益率：
 
 ```text
-ROI = 期望利润 / 输入成本
+收益率 = 期望利润 / 输入成本
 ```
 
 ## StatTrak 规则
@@ -196,5 +196,5 @@ src/main/java/com/qyaaaa/cstaihuan/TradeUpOptimizer.java
 相关数据来源：
 
 - 库存输入：`inventory_snapshot` / `inventory_item`
-- Catalog 产物目录：`catalog_skin`
+- 目录产物数据：`catalog_skin`
 - 手续费率：`trade-up.sale-fee-rate`
