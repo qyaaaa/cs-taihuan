@@ -23,8 +23,8 @@ const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
 <template>
   <section class="plans-stage reveal-up">
     <div class="section-head">
-      <span class="section-kicker">Plan Queue</span>
-      <h2>EV 推荐方案</h2>
+      <span class="section-kicker">方案队列</span>
+      <h2>期望值推荐方案</h2>
     </div>
 
     <div class="plans-layout">
@@ -45,7 +45,7 @@ const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
           <div class="plan-inline">
             <label>利润</label>
             <b>{{ currency(plan.expectedProfit) }}</b>
-            <label>ROI</label>
+            <label>回报率</label>
             <b>{{ percent(plan.roi) }}</b>
           </div>
         </button>
@@ -54,12 +54,12 @@ const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
       <section v-if="selectedPlan" class="plan-detail">
         <div class="detail-hero">
           <div>
-            <span class="section-kicker">Selected Contract</span>
+            <span class="section-kicker">当前合同</span>
             <h3>{{ selectedPlan.rarity }} 级合同</h3>
           </div>
           <div class="detail-metrics">
             <div>
-              <label>EV</label>
+              <label>期望值</label>
               <strong>{{ currency(selectedPlan.expectedOutputValue) }}</strong>
             </div>
             <div>
@@ -115,4 +115,3 @@ const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
     </div>
   </section>
 </template>
-

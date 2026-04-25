@@ -1,10 +1,12 @@
 package com.qyaaaa.cstaihuan.controller;
 
+import com.qyaaaa.cstaihuan.dto.AsyncTaskResponse;
 import com.qyaaaa.cstaihuan.dto.FetchInventoryRequest;
 import com.qyaaaa.cstaihuan.dto.InventoryPageRequest;
 import com.qyaaaa.cstaihuan.dto.InventoryPageResponse;
 import com.qyaaaa.cstaihuan.dto.InventorySnapshotRequest;
 import com.qyaaaa.cstaihuan.dto.InventorySnapshotResponse;
+import com.qyaaaa.cstaihuan.service.AsyncTaskService;
 import com.qyaaaa.cstaihuan.service.BuffInventoryService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,9 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/buff/inventory")
 public class BuffController {
     private final BuffInventoryService buffInventoryService;
+    private final AsyncTaskService asyncTaskService;
 
-    public BuffController(BuffInventoryService buffInventoryService) {
+    public BuffController(BuffInventoryService buffInventoryService, AsyncTaskService asyncTaskService) {
         this.buffInventoryService = buffInventoryService;
+        this.asyncTaskService = asyncTaskService;
     }
 
     /**
@@ -38,9 +42,27 @@ public class BuffController {
         return buffInventoryService.fetchAndSave(request);
     }
 
+    @PostMapping("/fetch/task")
+    public AsyncTaskResponse fetchTask(@RequestBody FetchInventoryRequest request) {
+        return asyncTaskService.submit("INVENTORY_FETCH", "库存抓取任务已创建。", new AsyncTaskService.AsyncTaskWork() {
+            public Object run(AsyncTaskService.TaskProgress progress) throws Exception {
+                return buffInventoryService.fetchAndSaveAsync(request, progress);
+            }
+        });
+    }
+
     @PostMapping("/fetch/force")
     public InventorySnapshotResponse forceFetch(@RequestBody FetchInventoryRequest request) throws Exception {
         return buffInventoryService.forceUpdate(request);
+    }
+
+    @PostMapping("/fetch/force/task")
+    public AsyncTaskResponse forceFetchTask(@RequestBody FetchInventoryRequest request) {
+        return asyncTaskService.submit("INVENTORY_FORCE_FETCH", "强制库存抓取任务已创建。", new AsyncTaskService.AsyncTaskWork() {
+            public Object run(AsyncTaskService.TaskProgress progress) throws Exception {
+                return buffInventoryService.forceUpdateAsync(request, progress);
+            }
+        });
     }
 
     @PostMapping("/load")

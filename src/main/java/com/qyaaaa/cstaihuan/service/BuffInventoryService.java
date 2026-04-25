@@ -48,14 +48,22 @@ public class BuffInventoryService {
     }
 
     public InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request) throws Exception {
-        return fetchAndSave(request, false);
+        return fetchAndSave(request, false, null);
     }
 
     public InventorySnapshotResponse forceUpdate(FetchInventoryRequest request) throws Exception {
-        return fetchAndSave(request, true);
+        return fetchAndSave(request, true, null);
     }
 
-    private InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request, boolean forceUpdate) throws Exception {
+    public InventorySnapshotResponse fetchAndSaveAsync(FetchInventoryRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+        return fetchAndSave(request, false, progress);
+    }
+
+    public InventorySnapshotResponse forceUpdateAsync(FetchInventoryRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+        return fetchAndSave(request, true, progress);
+    }
+
+    private InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request, boolean forceUpdate, AsyncTaskService.TaskProgress progress) throws Exception {
         String outputPath = request.getOutputPath();
         if (!StringUtils.hasText(outputPath)) {
             throw new IllegalArgumentException("outputPath is required.");
@@ -76,6 +84,9 @@ public class BuffInventoryService {
         log.info("Fetch inventory started, game={}, outputPath={}, pageSize={}, maxPages={}, forceRefresh={}, latestSnapshotId={}",
             game, path, Integer.valueOf(pageSize), maxPages, Boolean.valueOf(forceRefresh),
             latest.isPresent() ? Long.valueOf(latest.get().getId()) : null);
+        if (progress != null) {
+            progress.update(2, null, maxPages, "库存抓取任务已创建，正在解析 BUFF 会话。");
+        }
 
         // 非强制刷新时，命中冷却窗口就直接复用本地快照，避免重复请求 BUFF。
         if (!forceRefresh && latest.isPresent() && isWithinCooldown(latest.get())) {
@@ -84,6 +95,9 @@ public class BuffInventoryService {
             inventoryFileService.save(path, cachedItems);
             log.info("Fetch inventory hit cooldown cache, snapshotId={}, itemCount={}",
                 Long.valueOf(latest.get().getId()), Integer.valueOf(cachedItems.size()));
+            if (progress != null) {
+                progress.update(100, Integer.valueOf(cachedItems.size()), Integer.valueOf(cachedItems.size()), "命中本地快照，已跳过 BUFF 请求。");
+            }
             return buildResponse(latest.get(), path, cachedItems, true, "CACHE", "命中本地快照，已跳过重复调用 BUFF 接口。");
         }
 
@@ -95,7 +109,8 @@ public class BuffInventoryService {
                 cookie,
                 game,
                 pageSize,
-                maxPages
+                maxPages,
+                progress
             );
         } catch (BuffRateLimitException ex) {
             // 如果 BUFF 限流但本地已有快照，就优先回退到最近一次成功同步的数据。
@@ -105,6 +120,9 @@ public class BuffInventoryService {
                 inventoryFileService.save(path, cachedItems);
                 log.warn("Fetch inventory fell back to cached snapshot because of BUFF rate limit, snapshotId={}, itemCount={}",
                     Long.valueOf(latest.get().getId()), Integer.valueOf(cachedItems.size()));
+                if (progress != null) {
+                    progress.update(100, Integer.valueOf(cachedItems.size()), Integer.valueOf(cachedItems.size()), "BUFF 限流，已回退到最近一次数据库快照。");
+                }
                 return buildResponse(latest.get(), path, cachedItems, true, "CACHE", "BUFF 当前限流，已回退到数据库里最近一次保存的库存快照。");
             }
             log.warn("Fetch inventory failed because of BUFF rate limit and no cached snapshot was available");
@@ -113,6 +131,9 @@ public class BuffInventoryService {
 
         // 本地 json 保留完整库存，数据库和接口返回则统一只保留武器类物品。
         List<BuffItem> persistedItems = filterPersistedItems(items);
+        if (progress != null) {
+            progress.update(92, Integer.valueOf(persistedItems.size()), Integer.valueOf(items.size()), "库存抓取完成，正在筛选武器类物品并计算指纹。");
+        }
         log.info("Fetch inventory parsed result, totalItemCount={}, persistedItemCount={}",
             Integer.valueOf(items.size()), Integer.valueOf(persistedItems.size()));
         String fingerprint = buildFingerprint(persistedItems);
@@ -122,14 +143,23 @@ public class BuffInventoryService {
             inventoryFileService.save(path, items);
             log.info("Fetch inventory reused existing snapshot, snapshotId={}, persistedItemCount={}",
                 Long.valueOf(latest.get().getId()), Integer.valueOf(persistedItems.size()));
+            if (progress != null) {
+                progress.update(100, Integer.valueOf(persistedItems.size()), Integer.valueOf(persistedItems.size()), "远端库存无变化，已复用已有数据库快照。");
+            }
             return buildResponse(latest.get(), path, persistedItems, false, "REUSED", "远端库存无变化，已复用已有快照记录。");
         }
 
+        if (progress != null) {
+            progress.update(96, Integer.valueOf(persistedItems.size()), Integer.valueOf(items.size()), "正在写入数据库快照和本地 JSON。");
+        }
         InventorySnapshotRecord saved = inventorySnapshotStoreService.saveSnapshot(game, fingerprint, persistedItems);
         // 文件落完整库存，数据库只落筛选后的武器类物品，两个出口各自服务不同用途。
         inventoryFileService.save(path, items);
         log.info("Fetch inventory saved new snapshot, snapshotId={}, persistedItemCount={}, forceUpdate={}",
             Long.valueOf(saved.getId()), Integer.valueOf(persistedItems.size()), Boolean.valueOf(forceUpdate));
+        if (progress != null) {
+            progress.update(100, Integer.valueOf(persistedItems.size()), Integer.valueOf(persistedItems.size()), "库存快照已保存。");
+        }
         return buildResponse(saved, path, persistedItems, false, "REMOTE",
             forceUpdate ? "已强制从 BUFF 抓取库存并重新写入数据库。" : "已从 BUFF 抓取库存并写入数据库。");
     }
