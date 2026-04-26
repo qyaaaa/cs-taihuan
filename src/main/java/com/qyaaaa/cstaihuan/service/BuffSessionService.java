@@ -10,8 +10,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.OffsetDateTime;
+import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -110,6 +113,19 @@ public class BuffSessionService {
             Files.createDirectories(parent);
         }
         objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), record);
+        restrictOwnerAccess(path);
+    }
+
+    private void restrictOwnerAccess(Path path) throws IOException {
+        try {
+            Set<PosixFilePermission> permissions = EnumSet.of(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE
+            );
+            Files.setPosixFilePermissions(path, permissions);
+        } catch (UnsupportedOperationException ignored) {
+            // Non-POSIX file systems do not expose chmod-style permissions.
+        }
     }
 
     private Path storagePath() {
