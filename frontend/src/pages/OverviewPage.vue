@@ -8,6 +8,14 @@ defineProps({
     type: Array,
     required: true,
   },
+  canOptimizePlans: {
+    type: Boolean,
+    required: true,
+  },
+  optimizeDisabledReason: {
+    type: String,
+    default: '',
+  },
 })
 
 defineEmits(['change-page', 'open-session', 'optimize-plans'])
@@ -44,9 +52,9 @@ defineEmits(['change-page', 'open-session', 'optimize-plans'])
             <strong>采集与同步数据</strong>
             <span>统一处理 BUFF 库存抓取、强制刷新、目录同步和任务进度。</span>
           </button>
-          <button type="button" class="action-row" @click="$emit('optimize-plans')">
+          <button type="button" class="action-row" :disabled="!canOptimizePlans" @click="$emit('optimize-plans')">
             <strong>生成推荐方案</strong>
-            <span>读取数据库库存和目录数据，按期望值排序。</span>
+            <span>{{ optimizeDisabledReason || '读取数据库库存和目录数据，按期望值排序。' }}</span>
           </button>
         </div>
       </section>

@@ -6,12 +6,11 @@ import com.qyaaaa.cstaihuan.dto.SyncCatalogResponse;
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
+import com.qyaaaa.cstaihuan.model.CatalogSyncTaskRecord;
 import com.qyaaaa.cstaihuan.model.InventorySnapshotRecord;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,13 +30,15 @@ public class CatalogApplicationService {
     private final BuffSessionService buffSessionService;
     private final BuffApiClient buffApiClient;
     private final BuffProperties buffProperties;
+    private final CatalogSyncTaskStoreService catalogSyncTaskStoreService;
 
-    public CatalogApplicationService(CatalogService catalogService, InventorySnapshotStoreService inventorySnapshotStoreService, BuffSessionService buffSessionService, BuffApiClient buffApiClient, BuffProperties buffProperties) {
+    public CatalogApplicationService(CatalogService catalogService, InventorySnapshotStoreService inventorySnapshotStoreService, BuffSessionService buffSessionService, BuffApiClient buffApiClient, BuffProperties buffProperties, CatalogSyncTaskStoreService catalogSyncTaskStoreService) {
         this.catalogService = catalogService;
         this.inventorySnapshotStoreService = inventorySnapshotStoreService;
         this.buffSessionService = buffSessionService;
         this.buffApiClient = buffApiClient;
         this.buffProperties = buffProperties;
+        this.catalogSyncTaskStoreService = catalogSyncTaskStoreService;
     }
 
     public SyncCatalogResponse syncCatalog(SyncCatalogRequest request) throws Exception {
@@ -65,8 +66,8 @@ public class CatalogApplicationService {
             if (item.getGoodsId() != null && !item.getGoodsId().trim().isEmpty()) {
                 String goodsId = item.getGoodsId().trim();
                 seedGoodsIds.add(goodsId);
-                if (!seedCollectionsByGoodsId.containsKey(goodsId) && item.getCollection() != null && !item.getCollection().trim().isEmpty()) {
-                    seedCollectionsByGoodsId.put(goodsId, item.getCollection().trim());
+                if (!seedCollectionsByGoodsId.containsKey(goodsId)) {
+                    seedCollectionsByGoodsId.put(goodsId, item.getCollection() == null ? null : item.getCollection().trim());
                 }
             }
         }
@@ -82,34 +83,28 @@ public class CatalogApplicationService {
             Long.valueOf(snapshot.getId()), Integer.valueOf(inventory.size()), Integer.valueOf(seedGoodsIds.size()), Integer.valueOf(existingGoodsIds.size()),
             Integer.valueOf(maxDetailRequests), Long.valueOf(requestIntervalMillis));
 
-        Deque<CatalogSyncTask> queue = buildInitialQueue(seedGoodsIds, seedCollectionsByGoodsId, existingGoodsIds);
-        Set<String> discoveredGoodsIds = new LinkedHashSet<String>(seedGoodsIds);
-        Set<String> visitedGoodsIds = new LinkedHashSet<String>();
+        catalogSyncTaskStoreService.resetProcessing(snapshot.getId());
+        catalogSyncTaskStoreService.enqueue(snapshot.getId(), seedCollectionsByGoodsId);
         Map<String, CatalogSkin> catalogByIdentity = new LinkedHashMap<String, CatalogSkin>();
         int processedGoodsCount = 0;
         int skippedExistingCount = 0;
         boolean partial = false;
         if (progress != null) {
-            progress.update(5, Integer.valueOf(0), Integer.valueOf(maxDetailRequests), "Catalog 队列已创建，待处理 goods 数：" + queue.size() + "。");
+            progress.update(5, Integer.valueOf(0), Integer.valueOf(maxDetailRequests), "Catalog 队列已创建，待处理 goods 数：" + catalogSyncTaskStoreService.countOpen(snapshot.getId()) + "。");
         }
 
-        while (!queue.isEmpty()) {
-            if (processedGoodsCount >= maxDetailRequests) {
-                partial = true;
-                log.info("Catalog sync request budget reached, snapshotId={}, processedGoodsCount={}, queuedGoodsCount={}",
-                    Long.valueOf(snapshot.getId()), Integer.valueOf(processedGoodsCount), Integer.valueOf(queue.size()));
+        while (processedGoodsCount < maxDetailRequests) {
+            Optional<CatalogSyncTaskRecord> nextTask = catalogSyncTaskStoreService.claimNext(snapshot.getId());
+            if (!nextTask.isPresent()) {
                 break;
             }
-
-            CatalogSyncTask task = queue.removeFirst();
-            String goodsId = task.goodsId;
-            if (!visitedGoodsIds.add(goodsId)) {
-                continue;
-            }
+            CatalogSyncTaskRecord task = nextTask.get();
+            String goodsId = task.getGoodsId();
 
             boolean seededGoods = seedGoodsIds.contains(goodsId);
             if (existingGoodsIds.contains(goodsId) && !seededGoods) {
                 skippedExistingCount++;
+                catalogSyncTaskStoreService.markSkipped(task.getId(), "目录数据已存在，非种子 goods 跳过。");
                 continue;
             }
 
@@ -126,11 +121,12 @@ public class CatalogApplicationService {
                 );
             } catch (BuffRateLimitException ex) {
                 partial = true;
+                catalogSyncTaskStoreService.requeue(task.getId(), ex.getMessage());
                 if (!catalogByIdentity.isEmpty()) {
                     int persistedCount = catalogService.upsertAll(new ArrayList<CatalogSkin>(catalogByIdentity.values()));
-                    String message = buildMessage(persistedCount, processedGoodsCount, queue.size() + 1, true, true);
+                    String message = buildMessage(persistedCount, processedGoodsCount, catalogSyncTaskStoreService.countOpen(snapshot.getId()), true, true);
                     log.warn("Catalog sync rate limited after partial progress, snapshotId={}, processedGoodsCount={}, remainingGoodsCount={}, persistedItemCount={}",
-                        Long.valueOf(snapshot.getId()), Integer.valueOf(processedGoodsCount), Integer.valueOf(queue.size() + 1), Integer.valueOf(persistedCount));
+                        Long.valueOf(snapshot.getId()), Integer.valueOf(processedGoodsCount), Integer.valueOf(catalogSyncTaskStoreService.countOpen(snapshot.getId())), Integer.valueOf(persistedCount));
                     if (progress != null) {
                         progress.update(100, Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), message);
                     }
@@ -138,47 +134,63 @@ public class CatalogApplicationService {
                         Long.valueOf(snapshot.getId()),
                         inventory.size(),
                         seedGoodsIds.size(),
-                        discoveredGoodsIds.size(),
+                        catalogSyncTaskStoreService.countAll(snapshot.getId()),
                         processedGoodsCount,
                         skippedExistingCount,
-                        queue.size() + 1,
+                        catalogSyncTaskStoreService.countOpen(snapshot.getId()),
                         persistedCount,
                         true,
                         message
                     );
                 }
                 throw ex;
+            } catch (Exception ex) {
+                catalogSyncTaskStoreService.markFailed(task.getId(), ex.getMessage());
+                log.warn("Catalog goods sync failed, snapshotId={}, goodsId={}, retryCount={}, reason={}",
+                    Long.valueOf(snapshot.getId()), goodsId, Integer.valueOf(task.getRetryCount()), ex.getMessage());
+                continue;
             }
             processedGoodsCount++;
             if (progress != null) {
-                progress.update(catalogProgress(processedGoodsCount, maxDetailRequests), Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), "已处理 " + processedGoodsCount + " 个 goods，当前队列剩余 " + queue.size() + " 个。");
+                progress.update(catalogProgress(processedGoodsCount, maxDetailRequests), Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), "已处理 " + processedGoodsCount + " 个 goods，当前队列剩余 " + catalogSyncTaskStoreService.countOpen(snapshot.getId()) + " 个。");
             }
 
-            CatalogSkin skin = buffApiClient.parseCatalogSkinFromGoodsDetail(payload, task.collection);
-            if (skin != null) {
-                String identity = safe(skin.getGoodsId());
-                if (identity.isEmpty()) {
-                    identity = safe(skin.getName());
+            try {
+                CatalogSkin skin = buffApiClient.parseCatalogSkinFromGoodsDetail(payload, task.getCollection());
+                if (skin != null) {
+                    String identity = safe(skin.getGoodsId());
+                    if (identity.isEmpty()) {
+                        identity = safe(skin.getName());
+                    }
+                    if (!identity.isEmpty()) {
+                        catalogByIdentity.put(identity, skin);
+                        catalogService.upsertAll(Collections.singletonList(skin));
+                    }
                 }
-                if (!identity.isEmpty()) {
-                    catalogByIdentity.put(identity, skin);
-                }
-            }
 
-            List<String> relatedGoodsIds = buffApiClient.extractRelatedGoodsIds(payload);
-            String derivedCollection = skin == null ? task.collection : skin.getCollection();
-            for (String relatedGoodsId : relatedGoodsIds) {
-                if (relatedGoodsId == null || relatedGoodsId.trim().isEmpty()) {
-                    continue;
+                List<String> relatedGoodsIds = buffApiClient.extractRelatedGoodsIds(payload);
+                String derivedCollection = skin == null ? task.getCollection() : skin.getCollection();
+                for (String relatedGoodsId : relatedGoodsIds) {
+                    if (relatedGoodsId == null || relatedGoodsId.trim().isEmpty()) {
+                        continue;
+                    }
+                    String normalizedGoodsId = relatedGoodsId.trim();
+                    catalogSyncTaskStoreService.enqueue(snapshot.getId(), normalizedGoodsId, derivedCollection);
                 }
-                String normalizedGoodsId = relatedGoodsId.trim();
-                if (discoveredGoodsIds.add(normalizedGoodsId)) {
-                    queue.addFirst(new CatalogSyncTask(normalizedGoodsId, derivedCollection));
-                }
+                catalogSyncTaskStoreService.markSucceeded(task.getId());
+            } catch (Exception ex) {
+                catalogSyncTaskStoreService.markFailed(task.getId(), ex.getMessage());
+                log.warn("Catalog goods parse or persist failed, snapshotId={}, goodsId={}, retryCount={}, reason={}",
+                    Long.valueOf(snapshot.getId()), goodsId, Integer.valueOf(task.getRetryCount()), ex.getMessage());
             }
-            if (!queue.isEmpty() && processedGoodsCount < maxDetailRequests) {
+            if (catalogSyncTaskStoreService.countOpen(snapshot.getId()) > 0 && processedGoodsCount < maxDetailRequests) {
                 sleepBetweenGoodsDetailRequests(requestIntervalMillis, progress);
             }
+        }
+        if (processedGoodsCount >= maxDetailRequests && catalogSyncTaskStoreService.countOpen(snapshot.getId()) > 0) {
+            partial = true;
+            log.info("Catalog sync request budget reached, snapshotId={}, processedGoodsCount={}, openGoodsCount={}",
+                Long.valueOf(snapshot.getId()), Integer.valueOf(processedGoodsCount), Integer.valueOf(catalogSyncTaskStoreService.countOpen(snapshot.getId())));
         }
 
         if (progress != null) {
@@ -200,10 +212,11 @@ public class CatalogApplicationService {
         });
 
         int persistedCount = catalogService.upsertAll(items);
-        int remainingGoodsCount = queue.size();
+        int remainingGoodsCount = catalogSyncTaskStoreService.countOpen(snapshot.getId());
+        partial = partial || remainingGoodsCount > 0;
         String message = buildMessage(persistedCount, processedGoodsCount, remainingGoodsCount, partial, false);
         log.info("Catalog sync finished, snapshotId={}, discoveredGoodsCount={}, processedGoodsCount={}, skippedExistingCount={}, remainingGoodsCount={}, persistedItemCount={}, partial={}",
-            Long.valueOf(snapshot.getId()), Integer.valueOf(discoveredGoodsIds.size()), Integer.valueOf(processedGoodsCount),
+            Long.valueOf(snapshot.getId()), Integer.valueOf(catalogSyncTaskStoreService.countAll(snapshot.getId())), Integer.valueOf(processedGoodsCount),
             Integer.valueOf(skippedExistingCount), Integer.valueOf(remainingGoodsCount), Integer.valueOf(persistedCount), Boolean.valueOf(partial));
         if (progress != null) {
             progress.update(100, Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), message);
@@ -213,7 +226,7 @@ public class CatalogApplicationService {
             Long.valueOf(snapshot.getId()),
             inventory.size(),
             seedGoodsIds.size(),
-            discoveredGoodsIds.size(),
+            catalogSyncTaskStoreService.countAll(snapshot.getId()),
             processedGoodsCount,
             skippedExistingCount,
             remainingGoodsCount,
@@ -237,31 +250,6 @@ public class CatalogApplicationService {
             throw new IllegalArgumentException("No persisted inventory snapshot was found.");
         }
         return latest.get();
-    }
-
-    private Deque<CatalogSyncTask> buildInitialQueue(Set<String> seedGoodsIds, Map<String, String> seedCollectionsByGoodsId, Set<String> existingGoodsIds) {
-        Deque<CatalogSyncTask> queue = new ArrayDeque<CatalogSyncTask>();
-        for (String goodsId : seedGoodsIds) {
-            if (!existingGoodsIds.contains(goodsId)) {
-                queue.addLast(new CatalogSyncTask(goodsId, seedCollectionsByGoodsId.get(goodsId)));
-            }
-        }
-        for (String goodsId : seedGoodsIds) {
-            if (existingGoodsIds.contains(goodsId)) {
-                queue.addLast(new CatalogSyncTask(goodsId, seedCollectionsByGoodsId.get(goodsId)));
-            }
-        }
-        return queue;
-    }
-
-    private static final class CatalogSyncTask {
-        private final String goodsId;
-        private final String collection;
-
-        private CatalogSyncTask(String goodsId, String collection) {
-            this.goodsId = goodsId;
-            this.collection = collection;
-        }
     }
 
     private int resolveMaxDetailRequests(SyncCatalogRequest request) {
@@ -297,15 +285,15 @@ public class CatalogApplicationService {
 
     private String buildMessage(int persistedCount, int processedGoodsCount, int remainingGoodsCount, boolean partial, boolean limited) {
         if (persistedCount <= 0 && processedGoodsCount <= 0) {
-            return "未能从 BUFF 目录中解析出可用的 Catalog 数据，请检查会话或库存快照。";
+            return "未能从 BUFF 目录中解析出可用的目录数据，请检查会话或库存快照。";
         }
         if (limited) {
-            return "BUFF 当前触发限流，本次已先保存部分 Catalog 数据。请稍后继续同步，剩余待处理 goods 数：" + Math.max(0, remainingGoodsCount) + "。";
+            return "BUFF 当前触发限流，本次已先保存部分目录数据。请稍后继续同步，剩余待处理 goods 数：" + Math.max(0, remainingGoodsCount) + "。";
         }
         if (partial) {
-            return "Catalog 已分批同步，本次处理 " + processedGoodsCount + " 个 goods，剩余待处理 " + Math.max(0, remainingGoodsCount) + " 个。可稍后继续同步补全。";
+            return "目录数据已分批同步，本次处理 " + processedGoodsCount + " 个 goods，剩余待处理 " + Math.max(0, remainingGoodsCount) + " 个。可稍后继续同步补全。";
         }
-        return "已根据数据库库存和 BUFF 市场目录同步 Catalog。";
+        return "已根据数据库库存和 BUFF 市场目录同步目录数据。";
     }
 
     private String safe(String value) {

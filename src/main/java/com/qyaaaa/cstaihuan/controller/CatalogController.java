@@ -5,12 +5,15 @@ import com.qyaaaa.cstaihuan.dto.SyncCatalogRequest;
 import com.qyaaaa.cstaihuan.dto.SyncCatalogResponse;
 import com.qyaaaa.cstaihuan.service.AsyncTaskService;
 import com.qyaaaa.cstaihuan.service.CatalogApplicationService;
+import javax.validation.Valid;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Validated
 @RequestMapping("/api/catalog")
 public class CatalogController {
     private final CatalogApplicationService catalogApplicationService;
@@ -22,12 +25,12 @@ public class CatalogController {
     }
 
     @PostMapping("/sync")
-    public SyncCatalogResponse syncCatalog(@RequestBody(required = false) SyncCatalogRequest request) throws Exception {
+    public SyncCatalogResponse syncCatalog(@Valid @RequestBody(required = false) SyncCatalogRequest request) throws Exception {
         return catalogApplicationService.syncCatalog(request);
     }
 
     @PostMapping("/sync/task")
-    public AsyncTaskResponse syncCatalogTask(@RequestBody(required = false) SyncCatalogRequest request) {
+    public AsyncTaskResponse syncCatalogTask(@Valid @RequestBody(required = false) SyncCatalogRequest request) {
         return asyncTaskService.submit("CATALOG_SYNC", "Catalog 同步任务已创建。", new AsyncTaskService.AsyncTaskWork() {
             public Object run(AsyncTaskService.TaskProgress progress) throws Exception {
                 return catalogApplicationService.syncCatalogAsync(request, progress);
@@ -36,7 +39,7 @@ public class CatalogController {
     }
 
     @PostMapping("/import")
-    public SyncCatalogResponse importCatalog(@RequestBody(required = false) SyncCatalogRequest request) throws Exception {
+    public SyncCatalogResponse importCatalog(@Valid @RequestBody(required = false) SyncCatalogRequest request) throws Exception {
         return catalogApplicationService.syncCatalog(request);
     }
 }

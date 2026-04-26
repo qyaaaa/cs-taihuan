@@ -524,13 +524,52 @@ button {
 }
 
 .action-row:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.64;
 }
 
 .action-row span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.action-hint-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.action-hint-panel.warning {
+  border-color: rgba(213, 154, 69, 0.36);
+  background: var(--accent-soft);
+}
+
+.action-hint-panel strong,
+.action-hint-panel span {
+  display: block;
+}
+
+.action-hint-panel span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.inline-link-button {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.inline-link-button:hover {
+  color: var(--text);
 }
 
 .hero-ribbon {

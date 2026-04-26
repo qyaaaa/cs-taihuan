@@ -22,9 +22,21 @@ defineProps({
     type: Number,
     required: true,
   },
+  canGeneratePlans: {
+    type: Boolean,
+    required: true,
+  },
+  generateDisabledReason: {
+    type: String,
+    default: '',
+  },
+  catalogMissing: {
+    type: Boolean,
+    required: true,
+  },
 })
 
-defineEmits(['optimize-plans', 'select-plan'])
+defineEmits(['optimize-plans', 'select-plan', 'go-data'])
 </script>
 
 <template>
@@ -35,9 +47,16 @@ defineEmits(['optimize-plans', 'select-plan'])
         <h2>方案计算</h2>
         <p class="surface-note">方案计算读取数据库里最近一次保存的武器库存快照，并默认展示期望值前十的推荐方案。</p>
       </div>
-      <el-button type="primary" :loading="loadingPlans" @click="$emit('optimize-plans')">生成前十方案</el-button>
+      <el-button type="primary" :loading="loadingPlans" :disabled="!canGeneratePlans" @click="$emit('optimize-plans')">生成前十方案</el-button>
     </div>
     <p class="surface-note toolbar-note">{{ planState.lastAction }}</p>
+    <div v-if="generateDisabledReason" class="action-hint-panel warning">
+      <strong>{{ catalogMissing ? '目录数据为空' : '暂不能生成方案' }}</strong>
+      <span>{{ generateDisabledReason }}</span>
+      <button type="button" class="inline-link-button" @click="$emit('go-data')">
+        {{ catalogMissing ? '去同步目录数据' : '去数据页准备数据' }}
+      </button>
+    </div>
 
     <PlanWorkspace
       :plans="sortedPlans"
