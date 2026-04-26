@@ -22,6 +22,14 @@ defineProps({
     type: Number,
     required: true,
   },
+  planFilters: {
+    type: Object,
+    required: true,
+  },
+  rarityOptions: {
+    type: Array,
+    required: true,
+  },
   canGeneratePlans: {
     type: Boolean,
     required: true,
@@ -36,7 +44,7 @@ defineProps({
   },
 })
 
-defineEmits(['optimize-plans', 'select-plan', 'go-data'])
+defineEmits(['optimize-plans', 'select-plan', 'go-data', 'update-filter'])
 </script>
 
 <template>
@@ -62,7 +70,11 @@ defineEmits(['optimize-plans', 'select-plan', 'go-data'])
       :plans="sortedPlans"
       :selected-plan="selectedPlan"
       :selected-plan-index="selectedPlanIndex"
+      :total-plan-count="planState.plans.length"
+      :plan-filters="planFilters"
+      :rarity-options="rarityOptions"
       @select-plan="$emit('select-plan', $event)"
+      @update-filter="(key, value) => $emit('update-filter', key, value)"
     />
   </section>
 </template>

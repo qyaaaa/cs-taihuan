@@ -4,6 +4,7 @@ import javax.validation.constraints.DecimalMax;
 import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Positive;
 import lombok.Data;
 
@@ -27,4 +28,16 @@ public class OptimizeTradeUpRequest {
     @Min(value = 1, message = "maxCombinations 不能小于 1")
     @Max(value = 1000000, message = "maxCombinations 不能大于 1000000")
     private Integer maxCombinations;
+
+    @Pattern(regexp = "expectedOutputValue|expectedProfit|roi|inputCost|rarityRank", message = "sortBy 不支持")
+    private String sortBy;
+
+    @Pattern(regexp = "all|consumer|industrial|mil-spec|restricted|classified|covert|gold", message = "rarity 不支持")
+    private String rarity;
+
+    @Pattern(regexp = "all|normal|stattrak", message = "trackType 不支持")
+    private String trackType;
+
+    @Pattern(regexp = "all|regular|gold", message = "contractType 不支持")
+    private String contractType;
 }

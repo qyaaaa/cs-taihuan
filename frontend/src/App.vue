@@ -236,12 +236,15 @@ onMounted(() => {
           :sorted-plans="plans.sortedPlans.value"
           :selected-plan="plans.selectedPlan.value"
           :selected-plan-index="plans.selectedPlanIndex.value"
+          :plan-filters="plans.planFilters"
+          :rarity-options="plans.rarityOptions.value"
           :can-generate-plans="!planDisabledReason"
           :generate-disabled-reason="planDisabledReason"
           :catalog-missing="plans.catalogMissing.value"
           @optimize-plans="plans.optimizePlans"
           @go-data="activePage = 'data'"
           @select-plan="plans.selectedPlanIndex.value = $event"
+          @update-filter="plans.updatePlanFilter"
         />
 
         <DataPage

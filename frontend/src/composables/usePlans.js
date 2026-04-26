@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createCatalogSyncTask } from '../api/catalog'
 import { optimizeTradeUp, persistNextTierCatalogApi } from '../api/tradeUp'
@@ -18,6 +18,13 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     maxCombinations: null,
   })
 
+  const planFilters = reactive({
+    sortBy: 'expectedOutputValue',
+    rarity: 'all',
+    trackType: 'all',
+    contractType: 'all',
+  })
+
   const planState = reactive({
     plans: [],
     lastAction: '尚未生成方案',
@@ -25,17 +32,53 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     catalogAction: '尚未同步目录数据',
   })
 
-  const sortedPlans = computed(() => {
-    return [...(planState.plans || [])].sort((a, b) => {
-      const byEv = Number(b.expectedOutputValue || 0) - Number(a.expectedOutputValue || 0)
-      if (byEv !== 0) {
-        return byEv
+  const rarityOptions = computed(() => {
+    const rarities = new Set()
+    ;(planState.plans || []).forEach((plan) => {
+      if (plan?.rarity) {
+        rarities.add(plan.rarity)
       }
-      return Number(b.expectedProfit || 0) - Number(a.expectedProfit || 0)
     })
+    return Array.from(rarities).sort((left, right) => sortValue(left, 'rarityRank') - sortValue(right, 'rarityRank'))
+  })
+
+  const sortedPlans = computed(() => {
+    return [...(planState.plans || [])]
+      .filter((plan) => {
+        if (planFilters.rarity !== 'all' && plan.rarity !== planFilters.rarity) {
+          return false
+        }
+        if (planFilters.trackType === 'stattrak' && !isStatTrakPlan(plan)) {
+          return false
+        }
+        if (planFilters.trackType === 'normal' && isStatTrakPlan(plan)) {
+          return false
+        }
+        if (planFilters.contractType === 'gold' && !isGoldContract(plan)) {
+          return false
+        }
+        if (planFilters.contractType === 'regular' && isGoldContract(plan)) {
+          return false
+        }
+        return true
+      })
+      .sort((left, right) => comparePlans(left, right, planFilters.sortBy))
   })
 
   const selectedPlan = computed(() => sortedPlans.value[selectedPlanIndex.value] || null)
+
+  watch(sortedPlans, (plans) => {
+    if (selectedPlanIndex.value >= plans.length) {
+      selectedPlanIndex.value = 0
+    }
+  })
+
+  const updatePlanFilter = (key, value) => {
+    if (Object.prototype.hasOwnProperty.call(planFilters, key)) {
+      planFilters[key] = value
+      selectedPlanIndex.value = 0
+    }
+  }
 
   const optimizePlans = async () => {
     loadingPlans.value = true
@@ -46,6 +89,10 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
         saleFeeRate: planForm.saleFeeRate,
         maxItemsPerRarity: planForm.maxItemsPerRarity,
         maxCombinations: planForm.maxCombinations,
+        sortBy: planFilters.sortBy,
+        rarity: planFilters.rarity,
+        trackType: planFilters.trackType,
+        contractType: planFilters.contractType,
       })
       planState.plans = payload.plans || []
       planState.lastAction = `已生成 ${planState.plans.length} 条推荐方案`
@@ -113,11 +160,53 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     catalogMissing,
     selectedPlanIndex,
     planForm,
+    planFilters,
+    rarityOptions,
     planState,
     sortedPlans,
     selectedPlan,
+    updatePlanFilter,
     optimizePlans,
     syncCatalog,
     persistNextTierCatalog,
   }
+}
+
+const comparePlans = (left, right, sortBy) => {
+  const leftValue = sortValue(left, sortBy)
+  const rightValue = sortValue(right, sortBy)
+  const direction = sortBy === 'inputCost' ? 1 : -1
+  const primary = (leftValue - rightValue) * direction
+  if (primary !== 0) {
+    return primary
+  }
+  const byEv = Number(right.expectedOutputValue || 0) - Number(left.expectedOutputValue || 0)
+  if (byEv !== 0) {
+    return byEv
+  }
+  return Number(right.expectedProfit || 0) - Number(left.expectedProfit || 0)
+}
+
+const isStatTrakPlan = (plan) => {
+  return (plan?.inputs || []).some((item) => /stattrak/i.test(item?.name || ''))
+}
+
+const isGoldContract = (plan) => plan?.rarity === 'covert'
+
+const rarityRanks = {
+  consumer: 1,
+  industrial: 2,
+  'mil-spec': 3,
+  restricted: 4,
+  classified: 5,
+  covert: 6,
+  gold: 7,
+}
+
+const sortValue = (plan, sortBy) => {
+  if (sortBy === 'rarityRank') {
+    const rarity = typeof plan === 'string' ? plan : plan?.rarity
+    return rarityRanks[rarity] || 0
+  }
+  return Number(plan?.[sortBy] || 0)
 }

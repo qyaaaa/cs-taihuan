@@ -56,9 +56,16 @@ public final class TradeUpOptimizer {
     }
 
     public List<TradeUpPlan> findBestContracts(List<BuffItem> items, int topK, int maxItemsPerRarity, int maxCombinations) {
+        return findBestContracts(items, topK, maxItemsPerRarity, maxCombinations, null, null, null, null);
+    }
+
+    public List<TradeUpPlan> findBestContracts(List<BuffItem> items, int topK, int maxItemsPerRarity, int maxCombinations, String sortBy, String rarityFilter, String trackTypeFilter, String contractTypeFilter) {
         Map<String, List<BuffItem>> byRarity = new HashMap<String, List<BuffItem>>();
         for (BuffItem item : items) {
             String contractRarity = contractRarity(item);
+            if (!matchesRarity(contractRarity, rarityFilter) || !matchesTrack(item, trackTypeFilter) || !matchesContractType(contractRarity, contractTypeFilter)) {
+                continue;
+            }
             if (!item.isTradable() || contractRarity == null || item.getCollection() == null || item.getFloatValue() == null) {
                 continue;
             }
@@ -92,8 +99,40 @@ public final class TradeUpOptimizer {
             enumerate(shortlist, rarity, contractSize(rarity), 0, new ArrayList<BuffItem>(), candidates, maxCombinations);
         }
 
-        Collections.sort(candidates, new Comparator<TradeUpPlan>() {
+        Collections.sort(candidates, planComparator(sortBy));
+        if (candidates.size() > topK) {
+            return new ArrayList<TradeUpPlan>(candidates.subList(0, topK));
+        }
+        return candidates;
+    }
+
+    private static boolean matchesRarity(String rarity, String rarityFilter) {
+        return rarityFilter == null || rarityFilter.trim().isEmpty() || "all".equals(rarityFilter) || rarityFilter.equals(rarity);
+    }
+
+    private static boolean matchesTrack(BuffItem item, String trackTypeFilter) {
+        if (trackTypeFilter == null || trackTypeFilter.trim().isEmpty() || "all".equals(trackTypeFilter)) {
+            return true;
+        }
+        boolean statTrak = isStatTrakItem(item);
+        return "stattrak".equals(trackTypeFilter) ? statTrak : !statTrak;
+    }
+
+    private static boolean matchesContractType(String rarity, String contractTypeFilter) {
+        if (contractTypeFilter == null || contractTypeFilter.trim().isEmpty() || "all".equals(contractTypeFilter)) {
+            return true;
+        }
+        boolean goldContract = "covert".equals(rarity);
+        return "gold".equals(contractTypeFilter) ? goldContract : !goldContract;
+    }
+
+    private static Comparator<TradeUpPlan> planComparator(final String sortBy) {
+        return new Comparator<TradeUpPlan>() {
             public int compare(TradeUpPlan left, TradeUpPlan right) {
+                int primary = comparePrimary(left, right, sortBy);
+                if (primary != 0) {
+                    return primary;
+                }
                 int byProfit = Double.compare(right.getExpectedProfit(), left.getExpectedProfit());
                 if (byProfit != 0) {
                     return byProfit;
@@ -104,11 +143,48 @@ public final class TradeUpOptimizer {
                 }
                 return Double.compare(left.getInputCost(), right.getInputCost());
             }
-        });
-        if (candidates.size() > topK) {
-            return new ArrayList<TradeUpPlan>(candidates.subList(0, topK));
+        };
+    }
+
+    private static int comparePrimary(TradeUpPlan left, TradeUpPlan right, String sortBy) {
+        if ("expectedOutputValue".equals(sortBy)) {
+            return Double.compare(right.getExpectedOutputValue(), left.getExpectedOutputValue());
         }
-        return candidates;
+        if ("roi".equals(sortBy)) {
+            return Double.compare(right.getRoi(), left.getRoi());
+        }
+        if ("inputCost".equals(sortBy)) {
+            return Double.compare(left.getInputCost(), right.getInputCost());
+        }
+        if ("rarityRank".equals(sortBy)) {
+            return Integer.valueOf(rarityRank(right.getRarity())).compareTo(Integer.valueOf(rarityRank(left.getRarity())));
+        }
+        return Double.compare(right.getExpectedProfit(), left.getExpectedProfit());
+    }
+
+    private static int rarityRank(String rarity) {
+        if ("consumer".equals(rarity)) {
+            return 1;
+        }
+        if ("industrial".equals(rarity)) {
+            return 2;
+        }
+        if ("mil-spec".equals(rarity)) {
+            return 3;
+        }
+        if ("restricted".equals(rarity)) {
+            return 4;
+        }
+        if ("classified".equals(rarity)) {
+            return 5;
+        }
+        if ("covert".equals(rarity)) {
+            return 6;
+        }
+        if ("gold".equals(rarity)) {
+            return 7;
+        }
+        return 0;
     }
 
     private void enumerate(List<BuffItem> shortlist, String rarity, int contractSize, int start, List<BuffItem> current, List<TradeUpPlan> candidates, int maxCombinations) {

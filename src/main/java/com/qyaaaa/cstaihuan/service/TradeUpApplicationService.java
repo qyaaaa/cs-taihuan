@@ -54,7 +54,11 @@ public class TradeUpApplicationService {
             optimizer.enrichInventory(inventory),
             topK,
             maxItemsPerRarity,
-            maxCombinations
+            maxCombinations,
+            request.getSortBy(),
+            request.getRarity(),
+            request.getTrackType(),
+            request.getContractType()
         );
         return new OptimizeTradeUpResponse(plans);
     }
