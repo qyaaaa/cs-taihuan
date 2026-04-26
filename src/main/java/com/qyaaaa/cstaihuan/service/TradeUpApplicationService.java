@@ -49,7 +49,7 @@ public class TradeUpApplicationService {
         int maxCombinations = request.getMaxCombinations() == null ? tradeUpProperties.getMaxCombinations() : request.getMaxCombinations().intValue();
         int topK = request.getTopK() == null ? 5 : request.getTopK().intValue();
 
-        TradeUpOptimizer optimizer = new TradeUpOptimizer(catalog, saleFeeRate);
+        TradeUpOptimizer optimizer = new TradeUpOptimizer(catalog, saleFeeRate, tradeUpProperties.getOutputPriceFactors(), tradeUpProperties.getOutputPriceBands());
         List<TradeUpPlan> plans = optimizer.findBestContracts(
             optimizer.enrichInventory(inventory),
             topK,

@@ -2,6 +2,7 @@ package com.qyaaaa.cstaihuan;
 
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
+import com.qyaaaa.cstaihuan.model.FloatPriceBand;
 import com.qyaaaa.cstaihuan.model.Outcome;
 import com.qyaaaa.cstaihuan.model.TradeUpPlan;
 import java.util.ArrayList;
@@ -14,11 +15,49 @@ import java.util.Map;
 
 public final class TradeUpOptimizer {
     private final double saleFeeRate;
+    private final Map<String, Double> outputPriceFactors = new HashMap<String, Double>();
+    private final Map<String, List<FloatPriceBand>> outputPriceBands = new HashMap<String, List<FloatPriceBand>>();
     private final Map<String, CatalogSkin> catalogByName = new HashMap<String, CatalogSkin>();
     private final Map<String, List<OutputFamily>> outputFamiliesByCollectionRarityAndTrack = new HashMap<String, List<OutputFamily>>();
 
     public TradeUpOptimizer(List<CatalogSkin> catalog, double saleFeeRate) {
+        this(catalog, saleFeeRate, null);
+    }
+
+    public TradeUpOptimizer(List<CatalogSkin> catalog, double saleFeeRate, Map<String, Double> outputPriceFactors) {
+        this(catalog, saleFeeRate, outputPriceFactors, null);
+    }
+
+    public TradeUpOptimizer(List<CatalogSkin> catalog, double saleFeeRate, Map<String, Double> outputPriceFactors, Map<String, List<FloatPriceBand>> outputPriceBands) {
         this.saleFeeRate = saleFeeRate;
+        if (outputPriceFactors != null) {
+            for (Map.Entry<String, Double> entry : outputPriceFactors.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null && entry.getValue().doubleValue() > 0.0d) {
+                    this.outputPriceFactors.put(normalizeKey(entry.getKey()), entry.getValue());
+                }
+            }
+        }
+        if (outputPriceBands != null) {
+            for (Map.Entry<String, List<FloatPriceBand>> entry : outputPriceBands.entrySet()) {
+                if (entry.getKey() == null || entry.getValue() == null || entry.getValue().isEmpty()) {
+                    continue;
+                }
+                List<FloatPriceBand> bands = new ArrayList<FloatPriceBand>();
+                for (FloatPriceBand band : entry.getValue()) {
+                    if (isValidPriceBand(band)) {
+                        bands.add(band);
+                    }
+                }
+                if (!bands.isEmpty()) {
+                    Collections.sort(bands, new Comparator<FloatPriceBand>() {
+                        public int compare(FloatPriceBand left, FloatPriceBand right) {
+                            return Double.compare(left.getMinFloat(), right.getMinFloat());
+                        }
+                    });
+                    this.outputPriceBands.put(normalizeKey(entry.getKey()), bands);
+                }
+            }
+        }
         Map<String, OutputFamily> outputFamilyByIdentity = new LinkedHashMap<String, OutputFamily>();
         for (CatalogSkin skin : catalog) {
             catalogByName.put(skin.getName(), skin);
@@ -26,7 +65,7 @@ public final class TradeUpOptimizer {
             String familyKey = outputFamilyKey(skin);
             OutputFamily family = outputFamilyByIdentity.get(familyKey);
             if (family == null) {
-                family = new OutputFamily(skin.getCollection(), skin.getRarity(), isStatTrakName(skin.getName()));
+                family = new OutputFamily(skin.getCollection(), skin.getRarity(), isStatTrakName(skin.getName()), skin.getCategoryKey(), baseSkinName(skin.getName()));
                 outputFamilyByIdentity.put(familyKey, family);
             }
             family.addVariant(skin);
@@ -67,6 +106,9 @@ public final class TradeUpOptimizer {
                 continue;
             }
             if (!item.isTradable() || contractRarity == null || item.getCollection() == null || item.getFloatValue() == null) {
+                continue;
+            }
+            if (isUnavailableStatTrakGoldInput(item, contractRarity)) {
                 continue;
             }
             if (!hasValidOutcomes(item)) {
@@ -207,8 +249,15 @@ public final class TradeUpOptimizer {
 
     private boolean hasValidOutcomes(BuffItem item) {
         String targetRarity = Rarity.next(contractRarity(item));
-        return targetRarity != null
-            && outputFamiliesByCollectionRarityAndTrack.containsKey(outputFamilyGroupKey(contractCollectionKey(item, targetRarity), targetRarity, isStatTrakItem(item)));
+        return targetRarity != null && !validOutcomeFamilies(contractCollectionKey(item, targetRarity), targetRarity, isStatTrakItem(item)).isEmpty();
+    }
+
+    private boolean isUnavailableStatTrakGoldInput(BuffItem item, String contractRarity) {
+        if (!"covert".equals(contractRarity) || !isStatTrakItem(item)) {
+            return false;
+        }
+        String collection = contractCollectionKey(item, "gold");
+        return statTrakGoldKnifeFamilies(collection).isEmpty();
     }
 
     private String contractRarity(BuffItem item) {
@@ -236,8 +285,8 @@ public final class TradeUpOptimizer {
         boolean statTrakContract = isStatTrakItem(combo.get(0));
 
         for (Map.Entry<String, Integer> entry : collectionCounts.entrySet()) {
-            List<OutputFamily> families = outputFamiliesByCollectionRarityAndTrack.get(outputFamilyGroupKey(entry.getKey(), targetRarity, statTrakContract));
-            if (families == null || families.isEmpty()) {
+            List<OutputFamily> families = validOutcomeFamilies(entry.getKey(), targetRarity, statTrakContract);
+            if (families.isEmpty()) {
                 continue;
             }
             double probability = (double) entry.getValue().intValue() / (double) combo.size() / (double) families.size();
@@ -247,7 +296,7 @@ public final class TradeUpOptimizer {
                 if (pricedSkin == null) {
                     continue;
                 }
-                double estimatedSalePrice = pricedSkin.getPrice() * (1.0d - saleFeeRate);
+                double estimatedSalePrice = adjustedOutputPrice(pricedSkin, estimatedFloat) * (1.0d - saleFeeRate);
                 expectedValue += probability * estimatedSalePrice;
                 outcomes.add(new Outcome(pricedSkin, probability, estimatedFloat, estimatedSalePrice));
             }
@@ -262,6 +311,98 @@ public final class TradeUpOptimizer {
         double profit = expectedValue - totalCost;
         double roi = totalCost == 0.0d ? 0.0d : profit / totalCost;
         return new TradeUpPlan(rarity, round2(totalCost), round2(expectedValue), round2(profit), round4(roi), round6(averageFloat), new ArrayList<BuffItem>(combo), outcomes);
+    }
+
+    private List<OutputFamily> validOutcomeFamilies(String collection, String targetRarity, boolean statTrakContract) {
+        List<OutputFamily> families = outputFamiliesByCollectionRarityAndTrack.get(outputFamilyGroupKey(collection, targetRarity, statTrakContract));
+        if (families == null || families.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (!"gold".equals(targetRarity) || !statTrakContract) {
+            return families;
+        }
+        return statTrakGoldKnifeFamilies(collection);
+    }
+
+    private List<OutputFamily> statTrakGoldKnifeFamilies(String collection) {
+        List<OutputFamily> families = outputFamiliesByCollectionRarityAndTrack.get(outputFamilyGroupKey(collection, "gold", true));
+        if (families == null || families.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<OutputFamily> filtered = new ArrayList<OutputFamily>();
+        for (OutputFamily family : families) {
+            if (!family.isGloveFamily()) {
+                filtered.add(family);
+            }
+        }
+        return filtered;
+    }
+
+    private double adjustedOutputPrice(CatalogSkin skin, double estimatedFloat) {
+        double basePrice = outputPriceForFloat(skin, estimatedFloat);
+        double factor = outputPriceFactor(skin);
+        return basePrice * factor;
+    }
+
+    private double outputPriceForFloat(CatalogSkin skin, double estimatedFloat) {
+        FloatPriceBand band = outputPriceBand(skin, estimatedFloat);
+        return band == null ? skin.getPrice() : band.getPrice();
+    }
+
+    private FloatPriceBand outputPriceBand(CatalogSkin skin, double estimatedFloat) {
+        if (skin == null || outputPriceBands.isEmpty()) {
+            return null;
+        }
+        FloatPriceBand byGoodsId = selectPriceBand(outputPriceBands.get(normalizeKey(skin.getGoodsId())), estimatedFloat);
+        if (byGoodsId != null) {
+            return byGoodsId;
+        }
+        FloatPriceBand byName = selectPriceBand(outputPriceBands.get(normalizeKey(skin.getName())), estimatedFloat);
+        if (byName != null) {
+            return byName;
+        }
+        return selectPriceBand(outputPriceBands.get(normalizeKey(baseSkinName(skin.getName()))), estimatedFloat);
+    }
+
+    private static FloatPriceBand selectPriceBand(List<FloatPriceBand> bands, double estimatedFloat) {
+        if (bands == null || bands.isEmpty()) {
+            return null;
+        }
+        for (FloatPriceBand band : bands) {
+            boolean upperInclusive = isLastBand(bands, band);
+            if (estimatedFloat >= band.getMinFloat() && (estimatedFloat < band.getMaxFloat() || (upperInclusive && estimatedFloat <= band.getMaxFloat()))) {
+                return band;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isLastBand(List<FloatPriceBand> bands, FloatPriceBand band) {
+        return !bands.isEmpty() && bands.get(bands.size() - 1) == band;
+    }
+
+    private double outputPriceFactor(CatalogSkin skin) {
+        if (skin == null || outputPriceFactors.isEmpty()) {
+            return 1.0d;
+        }
+        Double byGoodsId = outputPriceFactors.get(normalizeKey(skin.getGoodsId()));
+        if (byGoodsId != null) {
+            return byGoodsId.doubleValue();
+        }
+        Double byName = outputPriceFactors.get(normalizeKey(skin.getName()));
+        if (byName != null) {
+            return byName.doubleValue();
+        }
+        Double byBaseName = outputPriceFactors.get(normalizeKey(baseSkinName(skin.getName())));
+        return byBaseName == null ? 1.0d : byBaseName.doubleValue();
+    }
+
+    private static boolean isValidPriceBand(FloatPriceBand band) {
+        return band != null
+            && band.getPrice() > 0.0d
+            && band.getMaxFloat() > band.getMinFloat()
+            && band.getMinFloat() >= 0.0d
+            && band.getMaxFloat() <= 1.0d;
     }
 
     private double estimateOutputFloat(double averageInputFloat, double minFloat, double maxFloat) {
@@ -334,6 +475,10 @@ public final class TradeUpOptimizer {
         return name != null && name.toLowerCase().contains("stattrak");
     }
 
+    private static String normalizeKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
+    }
+
     private static String baseSkinName(String name) {
         if (name == null) {
             return "";
@@ -363,14 +508,18 @@ public final class TradeUpOptimizer {
         private final String collection;
         private final String rarity;
         private final boolean statTrak;
+        private final String categoryKey;
+        private final String name;
         private final List<CatalogSkin> variants = new ArrayList<CatalogSkin>();
         private double minFloat = Double.MAX_VALUE;
         private double maxFloat = 0.0d;
 
-        private OutputFamily(String collection, String rarity, boolean statTrak) {
+        private OutputFamily(String collection, String rarity, boolean statTrak, String categoryKey, String name) {
             this.collection = collection;
             this.rarity = rarity;
             this.statTrak = statTrak;
+            this.categoryKey = categoryKey;
+            this.name = name;
         }
 
         private void addVariant(CatalogSkin skin) {
@@ -396,6 +545,21 @@ public final class TradeUpOptimizer {
                 }
             }
             return fallback;
+        }
+
+        private boolean isGloveFamily() {
+            String text = normalizeKey(categoryKey) + " " + normalizeKey(name);
+            return text.contains("glove")
+                || text.contains("hand wrap")
+                || text.contains("手套")
+                || text.contains("裹手")
+                || text.contains("驾驶")
+                || text.contains("运动")
+                || text.contains("专业")
+                || text.contains("摩托")
+                || text.contains("九头蛇")
+                || text.contains("狂牙")
+                || text.contains("血猎");
         }
     }
 
