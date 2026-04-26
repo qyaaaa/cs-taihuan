@@ -3,6 +3,8 @@ package com.qyaaaa.cstaihuan.controller;
 import com.qyaaaa.cstaihuan.dto.BuffSessionImportRequest;
 import com.qyaaaa.cstaihuan.dto.BuffSessionStatusResponse;
 import com.qyaaaa.cstaihuan.service.BuffSessionService;
+import javax.validation.Valid;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Validated
 @RequestMapping("/api/buff/session")
 public class BuffSessionController {
     private final BuffSessionService buffSessionService;
@@ -25,7 +28,7 @@ public class BuffSessionController {
     }
 
     @PostMapping("/import")
-    public BuffSessionStatusResponse importSession(@RequestBody BuffSessionImportRequest request) throws Exception {
+    public BuffSessionStatusResponse importSession(@Valid @RequestBody BuffSessionImportRequest request) throws Exception {
         return buffSessionService.importSession(request);
     }
 
@@ -39,4 +42,3 @@ public class BuffSessionController {
         buffSessionService.clearSession();
     }
 }
-

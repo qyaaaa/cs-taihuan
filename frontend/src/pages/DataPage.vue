@@ -24,6 +24,34 @@ defineProps({
     type: Object,
     required: true,
   },
+  canFetchInventory: {
+    type: Boolean,
+    required: true,
+  },
+  fetchInventoryDisabledReason: {
+    type: String,
+    default: '',
+  },
+  canSyncCatalog: {
+    type: Boolean,
+    required: true,
+  },
+  syncCatalogDisabledReason: {
+    type: String,
+    default: '',
+  },
+  canPersistNextTier: {
+    type: Boolean,
+    required: true,
+  },
+  persistNextTierDisabledReason: {
+    type: String,
+    default: '',
+  },
+  catalogMissing: {
+    type: Boolean,
+    required: true,
+  },
   trackedTasks: {
     type: Array,
     required: true,
@@ -103,22 +131,26 @@ defineEmits([
         <p class="surface-note">
           长任务统一在这里启动。库存抓取和目录同步可能持续几分钟，任务进度会在下方持续刷新。
         </p>
+        <div v-if="catalogMissing" class="action-hint-panel warning">
+          <strong>目录数据为空</strong>
+          <span>请先点击“从 BUFF 同步目录数据”，完成后再保存关联档位或生成方案。</span>
+        </div>
         <div class="data-job-grid">
-          <button type="button" class="action-row" :disabled="loadingInventory" @click="$emit('fetch-inventory')">
-            <strong>{{ loadingInventory ? '库存抓取中' : '从 BUFF 获取库存' }}</strong>
-            <span>按页抓取 BUFF 库存，保存武器类素材快照。</span>
+          <button type="button" class="action-row" :disabled="loadingInventory || !canFetchInventory" @click="$emit('fetch-inventory')">
+            <strong>{{ canFetchInventory && loadingInventory ? '库存抓取中' : '从 BUFF 获取库存' }}</strong>
+            <span>{{ fetchInventoryDisabledReason || '按页抓取 BUFF 库存，保存武器类素材快照。' }}</span>
           </button>
-          <button type="button" class="action-row" :disabled="loadingInventory" @click="$emit('force-fetch-inventory')">
-            <strong>{{ loadingInventory ? '强制刷新中' : '强制刷新库存' }}</strong>
-            <span>忽略远端变化判断，重新落库当前库存。</span>
+          <button type="button" class="action-row" :disabled="loadingInventory || !canFetchInventory" @click="$emit('force-fetch-inventory')">
+            <strong>{{ canFetchInventory && loadingInventory ? '强制刷新中' : '强制刷新库存' }}</strong>
+            <span>{{ fetchInventoryDisabledReason || '忽略远端变化判断，重新落库当前库存。' }}</span>
           </button>
-          <button type="button" class="action-row" :disabled="loadingCatalog" @click="$emit('sync-catalog')">
+          <button type="button" class="action-row" :disabled="loadingCatalog || !canSyncCatalog" @click="$emit('sync-catalog')">
             <strong>{{ loadingCatalog ? '目录同步中' : '从 BUFF 同步目录数据' }}</strong>
-            <span>根据库存 goods_id 分批补全市场详情。</span>
+            <span>{{ syncCatalogDisabledReason || '根据库存 goods_id 分批补全市场详情。' }}</span>
           </button>
-          <button type="button" class="action-row" :disabled="loadingNextTier" @click="$emit('persist-next-tier')">
+          <button type="button" class="action-row" :disabled="loadingNextTier || !canPersistNextTier" @click="$emit('persist-next-tier')">
             <strong>{{ loadingNextTier ? '保存中' : '保存关联档位数据' }}</strong>
-            <span>为方案计算补齐上级/下级冗余数据。</span>
+            <span>{{ persistNextTierDisabledReason || '为方案计算补齐上级/下级冗余数据。' }}</span>
           </button>
         </div>
         <p class="surface-note">{{ planState.catalogAction }}</p>

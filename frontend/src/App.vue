@@ -121,6 +121,28 @@ const summaryRibbon = computed(() => {
   ]
 })
 
+const hasValidSession = computed(() => Boolean(session.sessionState.connected && session.sessionState.valid))
+const hasInventorySnapshot = computed(() => Boolean(inventory.inventoryState.snapshotId))
+
+const fetchInventoryDisabledReason = computed(() => {
+  if (hasValidSession.value) {
+    return ''
+  }
+  return session.sessionState.connected ? '请先校验 BUFF 会话，确认登录仍然有效。' : '请先导入并校验 BUFF 会话。'
+})
+
+const snapshotRequiredReason = computed(() => {
+  return hasInventorySnapshot.value ? '' : '请先从 BUFF 获取库存，生成数据库库存快照。'
+})
+
+const catalogMissingReason = computed(() => {
+  return plans.catalogMissing.value ? '目录数据库为空，请先到数据页同步目录数据。' : ''
+})
+
+const planDisabledReason = computed(() => {
+  return snapshotRequiredReason.value || catalogMissingReason.value
+})
+
 const changePage = (page) => {
   activePage.value = page
 }
@@ -131,6 +153,10 @@ const openSessionDialog = () => {
 }
 
 const optimizeFromOverview = () => {
+  if (planDisabledReason.value) {
+    activePage.value = planDisabledReason.value === snapshotRequiredReason.value ? 'data' : 'data'
+    return
+  }
   activePage.value = 'plans'
   plans.optimizePlans()
 }
@@ -185,6 +211,8 @@ onMounted(() => {
           v-if="activePage === 'overview'"
           :status-cards="statusCards"
           :summary-ribbon="summaryRibbon"
+          :can-optimize-plans="!planDisabledReason"
+          :optimize-disabled-reason="planDisabledReason"
           @change-page="changePage"
           @open-session="openSessionDialog"
           @optimize-plans="optimizeFromOverview"
@@ -208,7 +236,11 @@ onMounted(() => {
           :sorted-plans="plans.sortedPlans.value"
           :selected-plan="plans.selectedPlan.value"
           :selected-plan-index="plans.selectedPlanIndex.value"
+          :can-generate-plans="!planDisabledReason"
+          :generate-disabled-reason="planDisabledReason"
+          :catalog-missing="plans.catalogMissing.value"
           @optimize-plans="plans.optimizePlans"
+          @go-data="activePage = 'data'"
           @select-plan="plans.selectedPlanIndex.value = $event"
         />
 
@@ -220,6 +252,13 @@ onMounted(() => {
           :loading-catalog="plans.loadingCatalog.value"
           :loading-next-tier="plans.loadingNextTier.value"
           :plan-state="plans.planState"
+          :can-fetch-inventory="!fetchInventoryDisabledReason"
+          :fetch-inventory-disabled-reason="fetchInventoryDisabledReason"
+          :can-sync-catalog="!snapshotRequiredReason"
+          :sync-catalog-disabled-reason="snapshotRequiredReason"
+          :can-persist-next-tier="!snapshotRequiredReason && !plans.catalogMissing.value"
+          :persist-next-tier-disabled-reason="snapshotRequiredReason || catalogMissingReason"
+          :catalog-missing="plans.catalogMissing.value"
           :tracked-tasks="taskMonitor.trackedTasks.value"
           :visible-task-logs="taskMonitor.visibleTaskLogs.value"
           :task-counter-text="taskMonitor.taskCounterText"

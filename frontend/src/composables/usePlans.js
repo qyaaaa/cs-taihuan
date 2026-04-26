@@ -10,6 +10,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
   const loadingNextTier = ref(false)
   const loadingCatalog = ref(false)
   const selectedPlanIndex = ref(0)
+  const catalogMissing = ref(false)
 
   const planForm = reactive({
     saleFeeRate: null,
@@ -49,10 +50,12 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
       planState.plans = payload.plans || []
       planState.lastAction = `已生成 ${planState.plans.length} 条推荐方案`
       selectedPlanIndex.value = 0
+      catalogMissing.value = false
       ElMessage.success(`完成方案计算，共 ${planState.plans.length} 条`)
     } catch (error) {
       const message = String(error.message || '生成方案失败')
       if (message.includes('Catalog 数据库为空')) {
+        catalogMissing.value = true
         ElMessage.error('目录数据库为空，请先点击“从 BUFF 同步目录数据”')
       } else {
         ElMessage.error(message || '生成方案失败')
@@ -72,6 +75,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
       const finalTask = await pollTask(task.taskId, updateCatalogTask)
       const payload = finalTask.result || {}
       planState.catalogAction = payload.message || `已同步 ${payload.itemCount} 条目录数据`
+      catalogMissing.value = false
       ElMessage.success(payload.message || `已同步 ${payload.itemCount} 条目录数据`)
     } catch (error) {
       const message = String(error.message || '同步目录数据失败')
@@ -92,6 +96,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     } catch (error) {
       const message = String(error.message || '保存关联档位冗余数据失败')
       if (message.includes('Catalog 数据库为空')) {
+        catalogMissing.value = true
         ElMessage.error('目录数据库为空，请先点击“从 BUFF 同步目录数据”')
       } else {
         ElMessage.error(message || '保存关联档位冗余数据失败')
@@ -105,6 +110,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     loadingPlans,
     loadingNextTier,
     loadingCatalog,
+    catalogMissing,
     selectedPlanIndex,
     planForm,
     planState,
