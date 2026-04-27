@@ -33,3 +33,5 @@ trade-up:
   sale-fee-rate: 0.025
   max-items-per-rarity: 18
   max-combinations: 25000
+  output-price-factors: {}
+  output-price-bands: {}

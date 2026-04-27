@@ -1,193 +1,207 @@
 # 汰换计算规则
 
-本文档说明项目当前采用的 CS 饰品汰换合同计算口径，方便核对后端方案结果。
+本文档按 2026 口径整理项目当前采用的 CS 饰品汰换合同计算规则，并标注后端已实现的边界。
 
-## 基础条件
+## 1. 层级与槽位
 
-- 常规汰换合同使用 10 件输入饰品。
-- `covert -> gold` 是特殊五合一规则，使用 5 件 `covert` 输入饰品。
-- 输入饰品必须是同一品质等级，例如都为 `mil-spec` 或都为 `covert`。
-- 普通饰品和 StatTrak 饰品不能混合计算。
-- 输入饰品必须可交易。
-- 输入饰品必须有磨损值。
-- 输入饰品必须有收藏品信息。
-- 输入饰品必须能在目录数据中找到对应收藏品的下一档产物。
+系统根据投入饰品的品质自动决定合同槽位数量：
 
-## 品质档位
+| 汰换路径 | 投入数量 | 产出比例 | 备注 |
+| --- | ---: | ---: | --- |
+| `consumer -> industrial -> mil-spec -> restricted -> classified -> covert` | 10 件 | 10:1 | 标准汰换 |
+| `covert -> gold` | 5 件 | 5:1 | 隐秘红皮到罕见特殊物品的特殊规则 |
 
-系统内部使用以下品质顺序：
+内部品质顺序：
 
 ```text
 consumer -> industrial -> mil-spec -> restricted -> classified -> covert -> gold
 ```
 
-汰换时只会产出当前输入品质的下一档。例如：
+品质中英文与 BUFF 原始字段对照：
 
-- `mil-spec` 输入产出 `restricted`
-- `restricted` 输入产出 `classified`
-- `classified` 输入产出 `covert`
-- `covert` 输入产出 `gold`
+| 系统内部值 | 英文档位 | 中文档位 | 常用叫法 | BUFF 常见原始值 |
+| --- | --- | --- | --- | --- |
+| `consumer` | Consumer Grade | 消费级 | 白 | `consumer_weapon` / `default_weapon` |
+| `industrial` | Industrial Grade | 工业级 | 浅蓝 | `industrial_weapon` / `common_weapon` |
+| `mil-spec` | Mil-Spec Grade | 军规级 | 蓝 | `milspec_weapon` / `rare_weapon` |
+| `restricted` | Restricted | 受限 | 紫 | `restricted_weapon` / `mythical_weapon` |
+| `classified` | Classified | 保密 | 粉 | `classified_weapon` / `legendary_weapon` |
+| `covert` | Covert | 隐秘 | 红 / 红皮 / 隐秘级 | `covert_weapon` / `ancient_weapon` |
+| `gold` | Exceedingly Rare / Gold | 罕见特殊物品 / 金色 | 金 / 刀手套 | `gold_item` / `rare_special_item` / `exceedingly_rare_item` |
 
-`gold` 没有下一档，因此不能作为输入继续计算产出。
+因此文档和代码里的 `covert` 就是中文“隐秘级”，也就是俗称红皮；`covert -> gold` 表示“隐秘级红皮投入，产出金色罕见特殊物品”。
 
-## 概率计算
+逐级关系说明：
 
-项目按“收藏品权重 + 下一档皮肤数量”计算产出概率。
+- `consumer` 对应中文“消费级”，标准汰换下一档是 `industrial` / 工业级。
+- `industrial` 对应中文“工业级”，标准汰换下一档是 `mil-spec` / 军规级。
+- `mil-spec` 对应中文“军规级”，标准汰换下一档是 `restricted` / 受限。
+- `restricted` 对应中文“受限”，标准汰换下一档是 `classified` / 保密。
+- `classified` 对应中文“保密”，标准汰换下一档是 `covert` / 隐秘。
+- `covert` 对应中文“隐秘级”，常规语境也叫红皮；项目支持它走特殊 `covert -> gold` 五合一路径。
+- `gold` 对应中文“罕见特殊物品 / 金色”，通常是刀、手套等特殊物品。
 
-假设一份常规 10 件合同中：
+`gold` 没有下一档，不能作为输入继续计算。
 
-- A 收藏品输入了 6 件
-- B 收藏品输入了 4 件
-- A 收藏品下一档有 3 个可出皮肤
-- B 收藏品下一档有 2 个可出皮肤
+## 2. 基础约束
 
-则概率为：
+- 输入饰品必须是同一品质等级。
+- 普通和 StatTrak 饰品禁止混放。
+- 输入饰品必须可交易、有磨损值、有收藏品或金色上级来源信息。
+- 输入饰品必须能在目录数据中找到有效的下一档产物。
+- 常规合同使用 10 件；`covert -> gold` 使用 5 件。
+
+## 3. 概率模型
+
+概率按“来源权重 / 来源下可出底板数量”计算。磨损档位价格行不拆分概率，同一个底板的崭新、略磨、久经等只算一个产物底板。
+
+常规 10 合 1：
 
 ```text
-A 收藏品权重 = 6 / 10
-B 收藏品权重 = 4 / 10
-
-A 中每个下一档皮肤概率 = (6 / 10) / 3
-B 中每个下一档皮肤概率 = (4 / 10) / 2
+单个产物概率 = 该收藏品输入数量 / 10 / 该收藏品下一档可出底板数量
 ```
 
-公式：
+隐秘到金色 5 合 1：
 
 ```text
-单个产物概率 = 该收藏品输入数量 / 合同输入件数 / 该收藏品下一档可出皮肤数量
+单个产物概率 = 该箱源输入数量 / 5 / 该箱源金色可出底板数量
 ```
 
-注意：这里的“可出皮肤数量”按同一皮肤底板计算，不按磨损阶段计算。  
-例如 `G3SG1 | Dream Glade` 的崭新、略磨、久经等价格行只算作同一个可出皮肤。
+金色合成不会只按普通收藏品名匹配。后端会优先读取 `tags.weaponcase.localized_name` 作为箱源；只有输入箱源和金色产物箱源一致时，才参与概率和 EV。
 
-## 五合一（金色品质）
+## 4. StatTrak 与手套规则
 
-五合一指 `5 个隐秘品质（covert）` 合成 `1 个金色品质（gold）`。
+StatTrak 是独立产物池：
 
-它和常规 10 合一不同：
+- 普通输入只匹配普通产物。
+- StatTrak 输入只匹配 StatTrak 产物。
+- 普通和 StatTrak 不会混入同一份合同。
 
-- 输入件数是 5 件。
-- 输入品质必须是 `covert`。
-- 目标产物品质是 `gold`。
-- 5 件输入可以来自一个或多个收藏品。
-- 普通和 StatTrak 仍然不能混合。
-- 概率仍然按收藏品输入数量和下一档产物数量计算。
-- 金色产物必须按 BUFF 的上级来源匹配，优先使用 `tags.weaponcase.localized_name`。
+`covert -> gold` 的特殊规则：
 
-假设一份五合一合同中：
+- 5 件普通隐秘输入：产物池允许匹配箱源下的刀和手套。
+- 5 件 StatTrak 隐秘输入：只能使用可通向暗金刀的隐秘下级。
+- 暗金手套下级无法参与汰换，因此不能和暗金刀下级混入同一份合同。
+- 如果某个箱源的金色路径只对应手套，没有可用暗金刀类产物，那么该箱源的 StatTrak 隐秘下级视为不可用，不进入候选方案。
 
-- A 收藏品放入 3 件 `covert`
-- B 收藏品放入 2 件 `covert`
-- A 收藏品下一档有 2 个 `gold` 产物
-- B 收藏品下一档有 1 个 `gold` 产物
+这条规则比简单的“暗金炼金更优”更严格：只有明确通向暗金刀类产物的隐秘输入，才允许进入 StatTrak 红转金方案。
 
-则概率为：
+## 5. 磨损计算
+
+产物磨损不是随机值，而是由输入素材的算术平均磨损决定。输入平均磨损使用实际槽位数量作为分母：常规合同除以 10，五合一除以 5。
 
 ```text
-A 收藏品权重 = 3 / 5
-B 收藏品权重 = 2 / 5
-
-A 中每个金色产物概率 = (3 / 5) / 2
-B 中每个金色产物概率 = (2 / 5) / 1
+AvgFloat = sum(inputFloat) / contractSize
+常规级 AvgFloat = sum(inputFloat) / 10
+隐秘合金 AvgFloat = sum(inputFloat) / 5
 ```
 
-公式仍然是：
+产出磨损再按该产物皮肤自身的磨损上下限做线性映射：
 
 ```text
-单个产物概率 = 该收藏品输入数量 / 5 / 该收藏品金色产物数量
+OutcomeFloat = AvgFloat * (MaxFloat_out - MinFloat_out) + MinFloat_out
 ```
 
-所以五合一会改变概率分母和平均磨损分母：都按 5 件输入计算。
+例如二西莫夫这类固定磨损区间的产物，会使用它自己的 `MinFloat_out` 和 `MaxFloat_out`，而不是使用输入素材的磨损上下限。
 
-### 金色上级限制
+如果计算结果低于目标最小磨损，按最小磨损处理；如果高于最大磨损，按最大磨损处理。
 
-`covert -> gold` 不能只按普通收藏品名称匹配，还要考虑它的上级来源。
+## 6. 价格区间
 
-项目当前规则：
+目录同步会从 BUFF 商品详情保存同一底板不同磨损档位的价格行，例如：
 
-- 输入隐秘皮肤会优先读取库存原始数据中的 `tags.weaponcase.localized_name` 作为金色上级来源。
-- 金色目录产物会优先使用 BUFF 详情中的 `tags.weaponcase.localized_name` 作为归属来源。
-- 只有输入的上级来源和金色产物的上级来源一致时，才参与概率和期望值计算。
-- StatTrak 输入只匹配 StatTrak 金色产物。
-- 普通输入只匹配普通金色产物。
+- Factory New / 崭新出厂
+- Minimal Wear / 略有磨损
+- Field-Tested / 久经沙场
+- Well-Worn / 破损不堪
+- Battle-Scarred / 战痕累累
 
-因此，如果某个上级来源只产出普通手套，没有 StatTrak 手套，那么这个上级来源下的 StatTrak 隐秘皮肤不能用于合成 StatTrak 金色产物。  
-这类物品会因为找不到有效金色产物而被过滤掉。
+后端先计算产物的精确 `OutcomeFloat`，再在该底板的多个价格行中选择覆盖该磨损区间的价格。若没有精确命中，选择与目标磨损最近的价格行作为兜底。
 
-## 磨损计算
+BUFF 的交易页还会在同一个大磨损档内继续细分价格，例如久经沙场常见会拆成：
 
-先计算输入饰品的平均磨损：
+- `0.15 <= float < 0.18`
+- `0.18 <= float < 0.21`
+- `0.21 <= float < 0.24`
+- `0.24 <= float < 0.27`
+- `0.27 <= float <= 0.38`
 
-```text
-平均输入磨损 = 输入磨损之和 / 合同输入件数
+如果某个产物在这些细档价格差异很大，可以通过 `trade-up.output-price-bands` 配置精细磨损价格档。EV 计算会优先用精确 `OutcomeFloat` 命中细档价格；未命中或未配置时，再回退到 `catalog_skin` 的大档位价格。
+
+```yml
+trade-up:
+  output-price-bands:
+    "AWP | Asiimov":
+      - min-float: 0.15
+        max-float: 0.18
+        price: 420.00
+      - min-float: 0.18
+        max-float: 0.21
+        price: 360.00
+      - min-float: 0.21
+        max-float: 0.24
+        price: 330.00
 ```
 
-再根据每个目标皮肤的完整磨损区间计算产出磨损：
+细档匹配顺序和特殊因子一致：先按 `goods_id`，再按完整名称，最后按去掉磨损后缀的底板名称。区间按左闭右开匹配，最后一档右边界包含。
 
-```text
-产出磨损 = 目标皮肤最小磨损 + 平均输入磨损 * (目标皮肤最大磨损 - 目标皮肤最小磨损)
+## 7. 特殊溢价因子
+
+某些皮肤存在“磨损越烂越贵”或“极限低磨溢价”等现象。后端支持通过 `trade-up.output-price-factors` 配置特殊价格权重：
+
+```yml
+trade-up:
+  output-price-factors:
+    "AWP | Asiimov": 1.18
+    "1234567": 1.35
 ```
 
-如果计算结果低于目标皮肤最小磨损，则按最小磨损处理。  
-如果计算结果高于目标皮肤最大磨损，则按最大磨损处理。
+匹配顺序：
 
-## 价格选择
+1. `goods_id`
+2. 完整名称
+3. 去掉磨损后缀的底板名称
 
-目录表中可能保存了同一皮肤的多个磨损阶段价格，例如：
+未配置时因子为 `1.0`。如果同时配置了精细磨损价格档和特殊因子，计算顺序是先命中细档价格，再乘以特殊因子。
 
-- Factory New
-- Minimal Wear
-- Field-Tested
-- Well-Worn
-- Battle-Scarred
+## 8. EV 计算
 
-项目会先按完整皮肤底板计算一次产出概率和产出磨损，再根据产出磨损选择对应磨损阶段的价格行来估算价值。
-
-如果没有精确命中磨损区间，会选择与目标磨损最接近的价格行作为兜底。
-
-## 期望值计算
-
-每个产物先扣除销售手续费：
+每个产物先按磨损匹配到价格，再乘以特殊因子并扣除手续费：
 
 ```text
-产物税后价格 = BUFF 价格 * (1 - 手续费率)
+TaxedPrice_j = Price(OutcomeFloat_j) * PriceFactor_j * (1 - saleFeeRate)
 ```
 
-再计算期望产出价值：
+期望产出价值：
 
 ```text
-期望产出价值 = 所有产物的 (产物概率 * 产物税后价格) 之和
+ExpectedOutputValue = sum(P_j * TaxedPrice_j)
 ```
 
 输入成本：
 
 ```text
-输入成本 = 合同输入饰品购买价格之和
+InputCost = sum(Cost(Input_i))
 ```
 
-期望利润：
+期望利润和 ROI：
 
 ```text
-期望利润 = 期望产出价值 - 输入成本
+ExpectedProfit = ExpectedOutputValue - InputCost
+ROI = ExpectedProfit / InputCost
 ```
 
-收益率：
+对于 `covert -> gold`：
 
 ```text
-收益率 = 期望利润 / 输入成本
+EV = sum(P_j * Price(OutcomeFloat_j)) - sum(i=1..5 Cost(Input_i))
 ```
 
-## StatTrak 规则
+项目接口中 `expected_output_value` 表示税后期望产出价值，`expected_profit` 表示扣除输入成本后的期望利润。
 
-StatTrak 和普通饰品分开计算：
+## 9. 当前实现位置
 
-- StatTrak 输入只匹配 StatTrak 产物。
-- 普通输入只匹配普通产物。
-- 两者不会混合到同一份合同中。
-
-## 当前实现位置
-
-核心计算逻辑位于：
+核心计算逻辑：
 
 ```text
 src/main/java/com/qyaaaa/cstaihuan/TradeUpOptimizer.java
@@ -196,5 +210,7 @@ src/main/java/com/qyaaaa/cstaihuan/TradeUpOptimizer.java
 相关数据来源：
 
 - 库存输入：`inventory_snapshot` / `inventory_item`
-- 目录产物数据：`catalog_skin`
+- 目录产物：`catalog_skin`
 - 手续费率：`trade-up.sale-fee-rate`
+- 特殊价格因子：`trade-up.output-price-factors`
+- 精细磨损价格档：`trade-up.output-price-bands`

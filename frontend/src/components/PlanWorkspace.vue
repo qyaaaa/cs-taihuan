@@ -73,6 +73,8 @@ const imageSource = (item) => {
     || ''
   )
 }
+const isStatTrakPlan = (plan) => (plan?.inputs || []).some((item) => /stattrak/i.test(item?.name || ''))
+const isGoldContract = (plan) => plan?.rarity === 'covert'
 const contractTitle = (rarity) => {
   const target = nextRarity(rarity)
   return target ? `${rarityLabel(rarity)} -> ${rarityLabel(target)}` : `${rarityLabel(rarity)} 合同`
@@ -184,6 +186,11 @@ const contractTitle = (rarity) => {
               <strong>{{ percent(selectedPlan.roi) }}</strong>
             </div>
           </div>
+        </div>
+
+        <div v-if="isGoldContract(selectedPlan) && isStatTrakPlan(selectedPlan)" class="plan-insight">
+          <strong>StatTrak 金色合成</strong>
+          <span>该方案只使用可通向暗金刀的隐秘输入；暗金手套下级无法参与汰换，因此不会和暗金刀下级混入同一份合同。</span>
         </div>
 
         <div class="detail-columns">
