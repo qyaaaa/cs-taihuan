@@ -66,12 +66,15 @@ public class BuffSessionService {
     public BuffSessionStatusResponse validateSession() throws IOException {
         BuffSessionRecord record = requireRecord();
         try {
-            buffApiClient.fetchInventory(buffProperties.getBaseUrl(), record.getCookie(), buffProperties.getGame(), 1, Integer.valueOf(1));
+            boolean valid = buffApiClient.validateInventorySession(buffProperties.getBaseUrl(), record.getCookie(), buffProperties.getGame());
+            if (!valid) {
+                return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "会话校验失败，请重新登录 BUFF 后导入最新 Cookie。");
+            }
             record.setLastValidatedAt(now());
             saveRecord(record);
             return new BuffSessionStatusResponse(true, true, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "BUFF 会话有效。");
         } catch (RuntimeException ex) {
-            return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "会话校验失败，请重新导入最新 Cookie。");
+            return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "会话校验失败，请重新登录 BUFF 后导入最新 Cookie。");
         }
     }
 

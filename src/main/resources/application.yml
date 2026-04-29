@@ -25,7 +25,8 @@ buff:
   fetch-cooldown-seconds: 180
   catalog-sync:
     request-interval-millis: 5000
-    max-detail-requests-per-run: 20
+    max-detail-requests-per-run: 0
+    cache-fresh-millis: 3600000
   session:
     storage-path: data/buff-session.json
 

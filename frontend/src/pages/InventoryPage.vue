@@ -18,9 +18,24 @@ defineProps({
     type: Array,
     required: true,
   },
+  rarityOptions: {
+    type: Array,
+    required: true,
+  },
 })
 
-defineEmits(['restore-inventory', 'go-data', 'page-change'])
+defineEmits(['restore-inventory', 'go-data', 'page-change', 'update-rarity'])
+
+const rarityLabels = {
+  consumer: '消费级',
+  industrial: '工业级',
+  'mil-spec': '军规级',
+  restricted: '受限级',
+  classified: '保密级',
+  covert: '隐秘级',
+}
+
+const rarityLabel = (rarity) => rarityLabels[rarity] || rarity || '未知档位'
 </script>
 
 <template>
@@ -37,6 +52,25 @@ defineEmits(['restore-inventory', 'go-data', 'page-change'])
       </div>
     </div>
     <p class="surface-note toolbar-note">{{ inventoryState.lastAction }}</p>
+
+    <div class="inventory-filters">
+      <div class="control-field">
+        <label>档位</label>
+        <el-select
+          :model-value="inventoryState.rarity || 'all'"
+          size="small"
+          @change="$emit('update-rarity', $event)"
+        >
+          <el-option label="全部" value="all" />
+          <el-option
+            v-for="rarity in rarityOptions"
+            :key="rarity"
+            :label="rarityLabel(rarity)"
+            :value="rarity"
+          />
+        </el-select>
+      </div>
+    </div>
 
     <InventoryBoard
       :inventory-stats="inventoryStats"

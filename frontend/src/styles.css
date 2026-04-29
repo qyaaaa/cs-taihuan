@@ -7,14 +7,14 @@
   --line-strong: rgba(223, 230, 242, 0.18);
   --text: #edf1f7;
   --muted: #8f9aaa;
-  --accent: #f0a22f;
-  --accent-strong: #ffb13b;
-  --accent-soft: rgba(240, 162, 47, 0.14);
+  --accent: #5b7cfa;
+  --accent-strong: #8f6bff;
+  --accent-soft: rgba(91, 124, 250, 0.16);
   --good: #5bc48a;
   --danger: #ec6a5f;
   --sidebar-width: 244px;
   --shadow-soft: 0 14px 32px rgba(0, 0, 0, 0.28);
-  --active-bg: rgba(240, 162, 47, 0.12);
+  --active-bg: rgba(91, 124, 250, 0.14);
   --field-bg: #11161d;
   --image-well: #131820;
 }
@@ -34,13 +34,19 @@ body {
   font-family: "Noto Sans SC", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at 82% -10%, rgba(240, 162, 47, 0.09), transparent 280px),
+    radial-gradient(circle at 82% -10%, rgba(91, 124, 250, 0.11), transparent 280px),
     linear-gradient(180deg, #141820 0, var(--bg) 260px),
     var(--bg);
 }
 
 button {
   font: inherit;
+}
+
+button:focus-visible,
+.el-button:focus-visible {
+  outline: 2px solid rgba(91, 124, 250, 0.72);
+  outline-offset: 2px;
 }
 
 .workspace-shell {
@@ -73,8 +79,8 @@ button {
   width: 38px;
   height: 38px;
   place-items: center;
-  border: 1px solid rgba(242, 159, 24, 0.28);
-  background: linear-gradient(180deg, #ffb43a, #f29f18);
+  border: 1px solid rgba(143, 107, 255, 0.36);
+  background: linear-gradient(180deg, #7f93ff, #5b7cfa);
   color: #fff;
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
@@ -252,7 +258,7 @@ button {
 }
 
 .status-card:hover {
-  border-color: rgba(242, 159, 24, 0.38);
+  border-color: rgba(91, 124, 250, 0.44);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
   transform: translateY(-2px);
 }
@@ -261,7 +267,7 @@ button {
 .metric-tile span,
 .material-meta label,
 .detail-metrics label,
-.plan-inline label,
+.plan-row-metrics label,
 .ribbon-metric span {
   color: var(--muted);
   font-size: 12px;
@@ -320,7 +326,7 @@ button {
 }
 
 .subtle-note {
-  color: #8e8780;
+  color: var(--muted);
 }
 
 .toolbar-note {
@@ -337,7 +343,7 @@ button {
 
 .task-progress-panel.running,
 .task-progress-panel.pending {
-  border-color: rgba(242, 159, 24, 0.34);
+  border-color: rgba(91, 124, 250, 0.42);
   background: var(--accent-soft);
 }
 
@@ -527,7 +533,7 @@ button {
 }
 
 .action-row:hover:not(:disabled) {
-  border-color: rgba(242, 159, 24, 0.36);
+  border-color: rgba(91, 124, 250, 0.42);
   background: var(--active-bg);
 }
 
@@ -551,7 +557,7 @@ button {
 }
 
 .action-hint-panel.warning {
-  border-color: rgba(242, 159, 24, 0.36);
+  border-color: rgba(91, 124, 250, 0.42);
   background: var(--accent-soft);
 }
 
@@ -636,6 +642,12 @@ button {
   background: rgba(91, 196, 138, 0.1);
 }
 
+.session-chip.pending {
+  border-color: rgba(91, 124, 250, 0.42);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .session-mask {
   display: block;
   margin-top: 14px;
@@ -648,6 +660,48 @@ button {
   margin: 0 0 14px;
   color: var(--muted);
   line-height: 1.7;
+}
+
+.session-import-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.session-import-head .dialog-copy {
+  margin-bottom: 6px;
+}
+
+.session-import-steps {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.session-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.session-step strong {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgba(143, 107, 255, 0.42);
+  background: rgba(143, 107, 255, 0.14);
+  color: var(--accent);
+  font-size: 12px;
 }
 
 .dialog-actions {
@@ -677,15 +731,51 @@ button {
 
 .inventory-pagination {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
   margin-top: 18px;
 }
 
+.pagination-summary {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .inventory-pagination .el-pagination {
-  --el-pagination-bg-color: var(--surface);
+  --el-pagination-bg-color: var(--field-bg);
   --el-pagination-button-color: var(--text);
   --el-pagination-text-color: var(--muted);
   --el-pagination-hover-color: var(--accent);
+  --el-pagination-button-bg-color: var(--field-bg);
+  --el-pagination-button-disabled-bg-color: rgba(255, 255, 255, 0.04);
+  --el-pagination-button-disabled-color: rgba(240, 243, 247, 0.28);
+  --el-pagination-font-size: 14px;
+}
+
+.inventory-pagination .el-pager li,
+.inventory-pagination .btn-prev,
+.inventory-pagination .btn-next {
+  min-width: 34px !important;
+  height: 34px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--field-bg) !important;
+  color: var(--text) !important;
+  font-weight: 700;
+}
+
+.inventory-pagination .el-pager li.is-active {
+  border-color: var(--accent) !important;
+  background: var(--accent) !important;
+  color: #ffffff !important;
+}
+
+.inventory-pagination .el-pager li:hover,
+.inventory-pagination .btn-prev:hover,
+.inventory-pagination .btn-next:hover {
+  border-color: rgba(143, 107, 255, 0.58) !important;
+  color: var(--accent) !important;
 }
 
 .material-card,
@@ -701,7 +791,7 @@ button {
 }
 
 .material-card:hover {
-  border-color: rgba(242, 159, 24, 0.42);
+  border-color: rgba(91, 124, 250, 0.46);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
   transform: translateY(-2px);
 }
@@ -739,7 +829,6 @@ button {
 
 .material-topline,
 .plan-row-top,
-.plan-inline,
 .detail-item,
 .detail-metrics {
   display: flex;
@@ -778,9 +867,10 @@ button {
 }
 
 .plans-layout {
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: 380px minmax(0, 1fr);
   gap: 14px;
   margin-top: 14px;
+  align-items: stretch;
 }
 
 .plan-controls {
@@ -793,6 +883,16 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset;
+}
+
+.inventory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
 }
 
 .control-field {
@@ -834,6 +934,13 @@ button {
   gap: 8px;
 }
 
+.plan-list {
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .plan-row {
   padding: 13px 14px;
   border-left: 3px solid transparent;
@@ -846,7 +953,7 @@ button {
 
 .plan-row:hover,
 .plan-row.active {
-  border-color: rgba(242, 159, 24, 0.42);
+  border-color: rgba(91, 124, 250, 0.46);
   border-left-color: var(--accent);
   background: var(--active-bg);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
@@ -856,12 +963,38 @@ button {
   margin-top: 10px;
 }
 
-.plan-inline {
+.plan-row-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   margin-top: 12px;
 }
 
+.plan-row-metrics > div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.plan-row-metrics b {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.plan-row-metrics label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .plan-detail {
-  min-height: 420px;
+  min-height: clamp(560px, calc(100vh - 250px), 820px);
+  overflow: visible;
   padding: 16px;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -905,7 +1038,7 @@ button {
   gap: 6px;
   margin-top: 14px;
   padding: 12px;
-  border: 1px solid rgba(240, 162, 47, 0.32);
+  border: 1px solid rgba(91, 124, 250, 0.4);
   background: var(--accent-soft);
 }
 
@@ -940,12 +1073,13 @@ button {
 
 .detail-item.with-thumb {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  min-height: 104px;
 }
 
 .detail-thumb {
-  width: 54px;
-  height: 42px;
+  width: 112px;
+  height: 84px;
   object-fit: contain;
   border: 1px solid var(--line);
   background: var(--image-well);
@@ -1041,8 +1175,10 @@ button {
 }
 
 .el-button--warning {
-  --el-button-bg-color: #ee7c22 !important;
-  --el-button-border-color: #ee7c22 !important;
+  --el-button-bg-color: var(--accent) !important;
+  --el-button-border-color: var(--accent) !important;
+  --el-button-hover-bg-color: var(--accent-strong) !important;
+  --el-button-hover-border-color: var(--accent-strong) !important;
 }
 
 .el-popper,
@@ -1076,6 +1212,24 @@ button {
   .plans-layout,
   .detail-columns {
     grid-template-columns: 1fr;
+  }
+
+  .plans-layout {
+    min-height: auto;
+    max-height: none;
+  }
+
+  .plan-list,
+  .plan-detail {
+    overflow: visible;
+  }
+
+  .plan-list {
+    max-height: none !important;
+  }
+
+  .plan-detail {
+    min-height: auto;
   }
 
   .task-console-head {
@@ -1119,6 +1273,10 @@ button {
     width: 100%;
   }
 
+  .session-import-head {
+    grid-template-columns: 1fr;
+  }
+
   .plan-count {
     width: 100%;
     margin-left: 0;
@@ -1148,10 +1306,16 @@ button {
   }
 
   .inline-actions,
-  .plan-toolbar-form {
+  .plan-toolbar-form,
+  .inventory-pagination {
     width: 100%;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .inventory-pagination .el-pagination {
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 
   .control-field {

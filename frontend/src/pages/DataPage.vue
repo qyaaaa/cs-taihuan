@@ -84,7 +84,6 @@ defineProps({
 
 defineEmits([
   'open-session',
-  'validate-session',
   'clear-session',
   'fetch-inventory',
   'force-fetch-inventory',
@@ -106,8 +105,8 @@ defineEmits([
             <span class="session-chip" :class="{ active: sessionState.connected }">
               {{ sessionState.connected ? '已保存会话' : '未登录' }}
             </span>
-            <span class="session-chip" :class="{ active: sessionState.valid }">
-              {{ sessionState.valid ? '会话有效' : '待校验' }}
+            <span class="session-chip" :class="{ active: sessionState.valid, pending: loadingSession && sessionState.connected && !sessionState.valid }">
+              {{ sessionState.valid ? '会话有效' : (loadingSession && sessionState.connected ? '自动校验中' : '未校验') }}
             </span>
           </div>
           <strong class="session-mask">{{ sessionState.maskedCookie || '尚未导入 Cookie' }}</strong>
@@ -117,7 +116,6 @@ defineEmits([
           </p>
           <div class="inline-actions">
             <el-button type="primary" :loading="loadingSession" @click="$emit('open-session')">导入会话</el-button>
-            <el-button plain :loading="loadingSession" @click="$emit('validate-session')">校验会话</el-button>
             <el-button plain :loading="loadingSession" @click="$emit('clear-session')">清除会话</el-button>
           </div>
         </div>
@@ -135,6 +133,10 @@ defineEmits([
           <strong>目录数据为空</strong>
           <span>请先点击“从 BUFF 同步目录数据”，完成后再保存关联档位或生成方案。</span>
         </div>
+        <div v-else-if="planState.catalogIncomplete" class="action-hint-panel warning">
+          <strong>目录数据未补全</strong>
+          <span>当前产物池可能缺少上级皮肤，请继续点击“从 BUFF 同步目录数据”，直到剩余待处理 goods 为 0。</span>
+        </div>
         <div class="data-job-grid">
           <button type="button" class="action-row" :disabled="loadingInventory || !canFetchInventory" @click="$emit('fetch-inventory')">
             <strong>{{ canFetchInventory && loadingInventory ? '库存抓取中' : '从 BUFF 获取库存' }}</strong>
@@ -146,7 +148,7 @@ defineEmits([
           </button>
           <button type="button" class="action-row" :disabled="loadingCatalog || !canSyncCatalog" @click="$emit('sync-catalog')">
             <strong>{{ loadingCatalog ? '目录同步中' : '从 BUFF 同步目录数据' }}</strong>
-            <span>{{ syncCatalogDisabledReason || '根据库存 goods_id 分批补全市场详情。' }}</span>
+            <span>{{ syncCatalogDisabledReason || '根据库存 goods_id 补全市场详情，1 小时内已获取的数据会跳过。' }}</span>
           </button>
           <button type="button" class="action-row" :disabled="loadingNextTier || !canPersistNextTier" @click="$emit('persist-next-tier')">
             <strong>{{ loadingNextTier ? '保存中' : '保存关联档位数据' }}</strong>

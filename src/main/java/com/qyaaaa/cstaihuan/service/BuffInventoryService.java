@@ -180,23 +180,31 @@ public class BuffInventoryService {
         InventorySnapshotRecord snapshot = resolveSnapshot(request.getSnapshotId(), game);
         int page = request.getPage() == null || request.getPage().intValue() < 1 ? 1 : request.getPage().intValue();
         int pageSize = request.getPageSize() == null || request.getPageSize().intValue() < 1 ? 50 : request.getPageSize().intValue();
+        String rarity = normalizeRarityFilter(request.getRarity());
 
-        InventorySnapshotSummary summary = inventorySnapshotStoreService.summarizeSnapshot(snapshot.getId());
+        InventorySnapshotSummary summary = inventorySnapshotStoreService.summarizeSnapshot(snapshot.getId(), rarity);
         InventoryPageResponse response = new InventoryPageResponse();
         response.setSnapshotId(Long.valueOf(snapshot.getId()));
         response.setItemCount(summary.getItemCount());
         response.setTradableCount(summary.getTradableCount());
         response.setWithFloatCount(summary.getWithFloatCount());
         response.setTotalCost(summary.getTotalCost());
-        response.setTotalItems(inventorySnapshotStoreService.countItems(snapshot.getId()));
+        response.setTotalItems(inventorySnapshotStoreService.countItems(snapshot.getId(), rarity));
         response.setCurrentPage(page);
         response.setPageSize(pageSize);
-        response.setItems(inventorySnapshotStoreService.loadPagedItems(snapshot.getId(), page, pageSize));
+        response.setItems(inventorySnapshotStoreService.loadPagedItems(snapshot.getId(), page, pageSize, rarity));
         response.setFetchedAt(formatTimestamp(snapshot.getCreatedAt()));
-        log.info("Loaded inventory page, snapshotId={}, page={}, pageSize={}, totalItems={}, returnedItems={}",
-            Long.valueOf(snapshot.getId()), Integer.valueOf(page), Integer.valueOf(pageSize),
+        log.info("Loaded inventory page, snapshotId={}, page={}, pageSize={}, rarity={}, totalItems={}, returnedItems={}",
+            Long.valueOf(snapshot.getId()), Integer.valueOf(page), Integer.valueOf(pageSize), rarity == null ? "all" : rarity,
             Integer.valueOf(response.getTotalItems()), Integer.valueOf(response.getItems().size()));
         return response;
+    }
+
+    private String normalizeRarityFilter(String rarity) {
+        if (!StringUtils.hasText(rarity) || "all".equals(rarity)) {
+            return null;
+        }
+        return rarity.trim().toLowerCase();
     }
 
     private boolean isWithinCooldown(InventorySnapshotRecord record) {

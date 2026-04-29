@@ -97,11 +97,15 @@ public class InventorySnapshotStoreService {
     }
 
     public List<BuffItem> loadPagedItems(long snapshotId, int page, int pageSize) {
+        return loadPagedItems(snapshotId, page, pageSize, null);
+    }
+
+    public List<BuffItem> loadPagedItems(long snapshotId, int page, int pageSize, String rarity) {
         int offset = (page - 1) * pageSize;
         return jdbcTemplate.query(
             "SELECT asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name, collection_name, rarity, category_key, filter_rarity, quality_label, tradable, raw_json " +
-                "FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!' ORDER BY price DESC, id ASC LIMIT ? OFFSET ?",
-            new Object[] {Long.valueOf(snapshotId), Integer.valueOf(pageSize), Integer.valueOf(offset)},
+                "FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!'" + rarityWhereClause(rarity) + " ORDER BY price DESC, id ASC LIMIT ? OFFSET ?",
+            inventoryPageParams(snapshotId, rarity, pageSize, offset),
             (rs, rowNum) -> {
                 BuffItem item = new BuffItem();
                 item.setAssetId(rs.getString("asset_id"));
@@ -126,18 +130,26 @@ public class InventorySnapshotStoreService {
     }
 
     public int countItems(long snapshotId) {
+        return countItems(snapshotId, null);
+    }
+
+    public int countItems(long snapshotId, String rarity) {
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!'",
+            "SELECT COUNT(*) FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!'" + rarityWhereClause(rarity),
             Integer.class,
-            Long.valueOf(snapshotId)
+            countParams(snapshotId, rarity)
         );
         return count == null ? 0 : count.intValue();
     }
 
     public InventorySnapshotSummary summarizeSnapshot(long snapshotId) {
+        return summarizeSnapshot(snapshotId, null);
+    }
+
+    public InventorySnapshotSummary summarizeSnapshot(long snapshotId, String rarity) {
         return jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) AS item_count, SUM(CASE WHEN tradable = 1 THEN 1 ELSE 0 END) AS tradable_count, SUM(CASE WHEN float_value IS NOT NULL THEN 1 ELSE 0 END) AS with_float_count, COALESCE(SUM(price), 0) AS total_cost FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!'",
-            new Object[] {Long.valueOf(snapshotId)},
+            "SELECT COUNT(*) AS item_count, SUM(CASE WHEN tradable = 1 THEN 1 ELSE 0 END) AS tradable_count, SUM(CASE WHEN float_value IS NOT NULL THEN 1 ELSE 0 END) AS with_float_count, COALESCE(SUM(price), 0) AS total_cost FROM inventory_item WHERE snapshot_id = ? AND category_key LIKE 'weapon!_%' ESCAPE '!'" + rarityWhereClause(rarity),
+            countParams(snapshotId, rarity),
             (rs, rowNum) -> {
                 InventorySnapshotSummary summary = new InventorySnapshotSummary();
                 summary.setItemCount(rs.getInt("item_count"));
@@ -147,6 +159,24 @@ public class InventorySnapshotStoreService {
                 return summary;
             }
         );
+    }
+
+    private String rarityWhereClause(String rarity) {
+        return rarity == null || rarity.trim().isEmpty() ? "" : " AND filter_rarity = ?";
+    }
+
+    private Object[] countParams(long snapshotId, String rarity) {
+        if (rarity == null || rarity.trim().isEmpty()) {
+            return new Object[] {Long.valueOf(snapshotId)};
+        }
+        return new Object[] {Long.valueOf(snapshotId), rarity.trim().toLowerCase()};
+    }
+
+    private Object[] inventoryPageParams(long snapshotId, String rarity, int pageSize, int offset) {
+        if (rarity == null || rarity.trim().isEmpty()) {
+            return new Object[] {Long.valueOf(snapshotId), Integer.valueOf(pageSize), Integer.valueOf(offset)};
+        }
+        return new Object[] {Long.valueOf(snapshotId), rarity.trim().toLowerCase(), Integer.valueOf(pageSize), Integer.valueOf(offset)};
     }
 
     @Transactional

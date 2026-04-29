@@ -23,6 +23,7 @@ public class BuffProperties {
     @Data
     public static class CatalogSync {
         private long requestIntervalMillis = 5000L;
-        private int maxDetailRequestsPerRun = 20;
+        private int maxDetailRequestsPerRun = 0;
+        private long cacheFreshMillis = 3600000L;
     }
 }

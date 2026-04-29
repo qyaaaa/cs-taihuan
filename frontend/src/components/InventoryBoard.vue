@@ -52,6 +52,14 @@ const pagedInventory = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   return props.inventoryItems.slice(start, start + pageSize.value)
 })
+const totalPages = computed(() => Math.max(1, Math.ceil(Number(props.totalItems || 0) / pageSize.value)))
+const pageSummary = computed(() => {
+  const total = Number(props.totalItems || 0)
+  if (total <= 0) {
+    return '暂无库存'
+  }
+  return `第 ${currentPage.value} / ${totalPages.value} 页，共 ${total} 件`
+})
 
 watch(
   () => props.inventoryItems.length,
@@ -133,10 +141,11 @@ const wearText = (item) => item?.wearName || item?.wear_name || '--'
     </div>
 
     <div v-if="totalItems > pageSize" class="inventory-pagination">
+      <span class="pagination-summary">{{ pageSummary }}</span>
       <el-pagination
         v-model:current-page="currentPage"
         :page-size="pageSize"
-        layout="prev, pager, next, total"
+        layout="prev, pager, next"
         :total="totalItems"
         background
       />
