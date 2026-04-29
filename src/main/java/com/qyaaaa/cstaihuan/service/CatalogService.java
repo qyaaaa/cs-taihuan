@@ -54,6 +54,15 @@ public class CatalogService {
         return new LinkedHashSet<String>(rows);
     }
 
+    public Set<String> loadFreshGoodsIds(long freshAfterTimestamp) {
+        List<String> rows = jdbcTemplate.query(
+            "SELECT goods_id FROM catalog_skin WHERE goods_id IS NOT NULL AND goods_id <> '' AND updated_at >= ?",
+            (rs, rowNum) -> rs.getString("goods_id"),
+            Long.valueOf(freshAfterTimestamp)
+        );
+        return new LinkedHashSet<String>(rows);
+    }
+
     @Transactional
     public int replaceAll(final List<CatalogSkin> items) {
         log.info("Catalog replace start, itemCount={}", Integer.valueOf(items.size()));

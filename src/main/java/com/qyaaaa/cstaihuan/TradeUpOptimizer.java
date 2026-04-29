@@ -9,9 +9,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class TradeUpOptimizer {
     private final double saleFeeRate;
@@ -123,6 +125,7 @@ public final class TradeUpOptimizer {
         }
 
         List<TradeUpPlan> candidates = new ArrayList<TradeUpPlan>();
+        Set<String> generatedSignatures = new HashSet<String>();
         for (Map.Entry<String, List<BuffItem>> entry : byRarity.entrySet()) {
             List<BuffItem> shortlist = new ArrayList<BuffItem>(entry.getValue());
             Collections.sort(shortlist, new Comparator<BuffItem>() {
@@ -138,14 +141,45 @@ public final class TradeUpOptimizer {
                 shortlist = new ArrayList<BuffItem>(shortlist.subList(0, maxItemsPerRarity));
             }
             String rarity = contractRarityFromBucketKey(entry.getKey());
-            enumerate(shortlist, rarity, contractSize(rarity), 0, new ArrayList<BuffItem>(), candidates, maxCombinations);
+            enumerate(shortlist, rarity, contractSize(rarity), 0, new ArrayList<BuffItem>(), candidates, generatedSignatures, maxCombinations);
         }
 
         Collections.sort(candidates, planComparator(sortBy));
-        if (candidates.size() > topK) {
-            return new ArrayList<TradeUpPlan>(candidates.subList(0, topK));
+        return uniqueTopPlans(candidates, topK);
+    }
+
+    private static List<TradeUpPlan> uniqueTopPlans(List<TradeUpPlan> candidates, int topK) {
+        if (topK <= 0) {
+            return new ArrayList<TradeUpPlan>();
         }
-        return candidates;
+        List<TradeUpPlan> uniquePlans = new ArrayList<TradeUpPlan>();
+        Set<String> seenSignatures = new HashSet<String>();
+        for (TradeUpPlan plan : candidates) {
+            String signature = planSignature(plan);
+            if (seenSignatures.add(signature)) {
+                uniquePlans.add(plan);
+                if (uniquePlans.size() >= topK) {
+                    break;
+                }
+            }
+        }
+        return uniquePlans;
+    }
+
+    private static String planSignature(TradeUpPlan plan) {
+        return comboSignature(plan.getRarity(), plan.getInputs());
+    }
+
+    private static String inputSignature(BuffItem item) {
+        String goodsKey = safe(item.getGoodsId());
+        if (goodsKey.isEmpty()) {
+            goodsKey = safe(item.getName());
+        }
+        return goodsKey + '@' + safe(item.getCollection());
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private static boolean matchesRarity(String rarity, String rarityFilter) {
@@ -229,22 +263,38 @@ public final class TradeUpOptimizer {
         return 0;
     }
 
-    private void enumerate(List<BuffItem> shortlist, String rarity, int contractSize, int start, List<BuffItem> current, List<TradeUpPlan> candidates, int maxCombinations) {
+    private void enumerate(List<BuffItem> shortlist, String rarity, int contractSize, int start, List<BuffItem> current, List<TradeUpPlan> candidates, Set<String> generatedSignatures, int maxCombinations) {
         if (candidates.size() >= maxCombinations) {
             return;
         }
         if (current.size() == contractSize) {
-            candidates.add(evaluateContract(rarity, current));
+            String signature = comboSignature(rarity, current);
+            if (generatedSignatures.add(signature)) {
+                candidates.add(evaluateContract(rarity, current));
+            }
             return;
         }
         for (int i = start; i <= shortlist.size() - (contractSize - current.size()); i++) {
             current.add(shortlist.get(i));
-            enumerate(shortlist, rarity, contractSize, i + 1, current, candidates, maxCombinations);
+            enumerate(shortlist, rarity, contractSize, i + 1, current, candidates, generatedSignatures, maxCombinations);
             current.remove(current.size() - 1);
             if (candidates.size() >= maxCombinations) {
                 return;
             }
         }
+    }
+
+    private static String comboSignature(String rarity, List<BuffItem> combo) {
+        List<String> inputKeys = new ArrayList<String>();
+        for (BuffItem item : combo) {
+            inputKeys.add(inputSignature(item));
+        }
+        Collections.sort(inputKeys);
+        StringBuilder signature = new StringBuilder(safe(rarity));
+        for (String inputKey : inputKeys) {
+            signature.append('|').append(inputKey);
+        }
+        return signature.toString();
     }
 
     private boolean hasValidOutcomes(BuffItem item) {

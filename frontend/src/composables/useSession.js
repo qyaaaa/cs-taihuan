@@ -29,13 +29,39 @@ export const useSession = ({ restorePersistedInventory }) => {
     sessionState.message = payload?.message || '尚未保存 BUFF 会话。'
   }
 
+  const validateSession = async ({ silent = false } = {}) => {
+    loadingSession.value = true
+    try {
+      const payload = await validateSessionApi()
+      normalizeSession(payload)
+      if (payload?.valid) {
+        await restorePersistedInventory()
+      }
+      if (!silent) {
+        ElMessage.success(payload.message || '会话校验完成')
+      }
+      return payload
+    } catch (error) {
+      if (!silent) {
+        ElMessage.error(error.message || '会话校验失败')
+      } else {
+        sessionState.valid = false
+        sessionState.message = error.message || '自动校验失败，请重新导入 BUFF 会话。'
+      }
+      return null
+    } finally {
+      loadingSession.value = false
+    }
+  }
+
   const loadSessionStatus = async () => {
     loadingSession.value = true
     try {
       const payload = await getSessionStatus()
       normalizeSession(payload)
-      if (payload?.valid) {
-        await restorePersistedInventory()
+      if (payload?.connected) {
+        loadingSession.value = false
+        await validateSession({ silent: true })
       }
     } catch (error) {
       ElMessage.error(error.message || '读取登录状态失败')
@@ -51,25 +77,15 @@ export const useSession = ({ restorePersistedInventory }) => {
       normalizeSession(payload)
       sessionDialogVisible.value = false
       sessionForm.cookie = ''
-      ElMessage.success('BUFF 会话已保存到后端')
+      loadingSession.value = false
+      const validated = await validateSession({ silent: true })
+      if (validated?.valid) {
+        ElMessage.success('BUFF 会话已保存并校验通过')
+      } else {
+        ElMessage.warning(validated?.message || 'BUFF 会话已保存，自动校验未通过')
+      }
     } catch (error) {
       ElMessage.error(error.message || '保存会话失败')
-    } finally {
-      loadingSession.value = false
-    }
-  }
-
-  const validateSession = async () => {
-    loadingSession.value = true
-    try {
-      const payload = await validateSessionApi()
-      normalizeSession(payload)
-      if (payload?.valid) {
-        await restorePersistedInventory()
-      }
-      ElMessage.success(payload.message || '会话校验完成')
-    } catch (error) {
-      ElMessage.error(error.message || '会话校验失败')
     } finally {
       loadingSession.value = false
     }

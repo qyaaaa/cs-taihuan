@@ -81,7 +81,9 @@ const navItems = computed(() => [
 const statusCards = computed(() => [
   {
     label: 'BUFF 会话',
-    value: session.sessionState.connected ? (session.sessionState.valid ? '有效' : '待校验') : '未登录',
+    value: session.sessionState.connected
+      ? (session.sessionState.valid ? '有效' : (session.loadingSession.value ? '校验中' : '无效'))
+      : '未登录',
     note: session.sessionState.maskedCookie || '尚未导入 Cookie',
     target: 'data',
   },
@@ -128,7 +130,10 @@ const fetchInventoryDisabledReason = computed(() => {
   if (hasValidSession.value) {
     return ''
   }
-  return session.sessionState.connected ? '请先校验 BUFF 会话，确认登录仍然有效。' : '请先导入并校验 BUFF 会话。'
+  if (session.sessionState.connected) {
+    return session.loadingSession.value ? '正在自动校验 BUFF 会话。' : 'BUFF 会话未通过校验，请重新导入会话。'
+  }
+  return '请先导入 BUFF 会话，保存后会自动校验。'
 })
 
 const snapshotRequiredReason = computed(() => {
@@ -140,25 +145,42 @@ const catalogMissingReason = computed(() => {
 })
 
 const planDisabledReason = computed(() => {
+  if (plans.planState.catalogIncomplete) {
+    return '目录同步尚未完成，请继续点击“从 BUFF 同步目录数据”，直到剩余待处理 goods 为 0。'
+  }
   return snapshotRequiredReason.value || catalogMissingReason.value
 })
 
-const changePage = (page) => {
+const generatePlansOnEnter = () => {
+  if (planDisabledReason.value || plans.loadingPlans.value) {
+    return
+  }
+  plans.optimizePlans()
+}
+
+const changePage = (page, options = {}) => {
+  const fromPage = activePage.value
   activePage.value = page
+  if (page === 'plans' && (fromPage !== 'plans' || options.forceGenerate)) {
+    generatePlansOnEnter()
+  }
 }
 
 const openSessionDialog = () => {
-  activePage.value = 'data'
+  changePage('data')
   session.sessionDialogVisible.value = true
+}
+
+const openBuffLogin = () => {
+  window.open('https://buff.163.com/market/csgo', '_blank', 'noopener,noreferrer')
 }
 
 const optimizeFromOverview = () => {
   if (planDisabledReason.value) {
-    activePage.value = planDisabledReason.value === snapshotRequiredReason.value ? 'data' : 'data'
+    changePage('data')
     return
   }
-  activePage.value = 'plans'
-  plans.optimizePlans()
+  changePage('plans', { forceGenerate: true })
 }
 
 onMounted(() => {
@@ -185,7 +207,7 @@ onMounted(() => {
           type="button"
           class="nav-item"
           :class="{ active: activePage === item.key }"
-          @click="activePage = item.key"
+          @click="changePage(item.key)"
         >
           <span>{{ item.label }}</span>
           <small>{{ item.metric }}</small>
@@ -224,9 +246,11 @@ onMounted(() => {
           :inventory-state="inventory.inventoryState"
           :inventory-stats="inventory.inventoryStats.value"
           :inventory-items="inventory.inventoryItems.value"
+          :rarity-options="inventory.inventoryRarityOptions"
           @restore-inventory="inventory.restorePersistedInventory"
-          @go-data="activePage = 'data'"
+          @go-data="changePage('data')"
           @page-change="inventory.changeInventoryPage"
+          @update-rarity="inventory.changeInventoryRarity"
         />
 
         <PlansPage
@@ -242,7 +266,7 @@ onMounted(() => {
           :generate-disabled-reason="planDisabledReason"
           :catalog-missing="plans.catalogMissing.value"
           @optimize-plans="plans.optimizePlans"
-          @go-data="activePage = 'data'"
+          @go-data="changePage('data')"
           @select-plan="plans.selectedPlanIndex.value = $event"
           @update-filter="plans.updatePlanFilter"
         />
@@ -270,7 +294,6 @@ onMounted(() => {
           :task-type-label="taskMonitor.taskTypeLabel"
           :is-running-task="taskMonitor.isRunningTask"
           @open-session="session.sessionDialogVisible.value = true"
-          @validate-session="session.validateSession"
           @clear-session="session.clearSession"
           @fetch-inventory="inventory.fetchInventory"
           @force-fetch-inventory="inventory.forceFetchInventory"
@@ -283,12 +306,34 @@ onMounted(() => {
     <el-dialog
       v-model="session.sessionDialogVisible.value"
       title="导入 BUFF 会话"
-      width="560px"
+      width="640px"
       class="session-dialog"
     >
-      <p class="dialog-copy">
-        先在浏览器登录 BUFF，然后把请求头里的完整 Cookie 粘贴到这里。保存后由后端托管，库存抓取会自动复用它。
-      </p>
+      <div class="session-import-head">
+        <div>
+          <p class="dialog-copy">
+            先打开 BUFF 并确认浏览器已登录，再复制请求头里的完整 Cookie。保存后由后端托管，库存抓取会自动复用它。
+          </p>
+          <p class="surface-note">
+            本地页面不能跨域读取 BUFF Cookie，所以这里不会自动获取浏览器会话。
+          </p>
+        </div>
+        <el-button type="primary" plain @click="openBuffLogin">打开 BUFF</el-button>
+      </div>
+      <div class="session-import-steps">
+        <div class="session-step">
+          <strong>1</strong>
+          <span>在新标签页登录 BUFF，并打开任意市场或库存页面。</span>
+        </div>
+        <div class="session-step">
+          <strong>2</strong>
+          <span>打开浏览器开发者工具，找到 BUFF 请求里的 `Cookie` 请求头。</span>
+        </div>
+        <div class="session-step">
+          <strong>3</strong>
+          <span>复制完整 Cookie 粘贴到下方，保存后系统会自动校验。</span>
+        </div>
+      </div>
       <el-input
         v-model="session.sessionForm.cookie"
         type="textarea"

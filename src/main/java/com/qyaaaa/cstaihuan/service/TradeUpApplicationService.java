@@ -30,17 +30,20 @@ public class TradeUpApplicationService {
     private final TradeUpProperties tradeUpProperties;
     private final BuffProperties buffProperties;
     private final TradeUpNextTierStoreService tradeUpNextTierStoreService;
+    private final CatalogSyncTaskStoreService catalogSyncTaskStoreService;
 
-    public TradeUpApplicationService(InventorySnapshotStoreService inventorySnapshotStoreService, CatalogService catalogService, TradeUpProperties tradeUpProperties, BuffProperties buffProperties, TradeUpNextTierStoreService tradeUpNextTierStoreService) {
+    public TradeUpApplicationService(InventorySnapshotStoreService inventorySnapshotStoreService, CatalogService catalogService, TradeUpProperties tradeUpProperties, BuffProperties buffProperties, TradeUpNextTierStoreService tradeUpNextTierStoreService, CatalogSyncTaskStoreService catalogSyncTaskStoreService) {
         this.inventorySnapshotStoreService = inventorySnapshotStoreService;
         this.catalogService = catalogService;
         this.tradeUpProperties = tradeUpProperties;
         this.buffProperties = buffProperties;
         this.tradeUpNextTierStoreService = tradeUpNextTierStoreService;
+        this.catalogSyncTaskStoreService = catalogSyncTaskStoreService;
     }
 
     public OptimizeTradeUpResponse optimize(OptimizeTradeUpRequest request) throws Exception {
         InventorySnapshotRecord snapshot = resolveSnapshot(request.getSnapshotId());
+        assertCatalogSyncComplete(snapshot.getId());
         List<BuffItem> inventory = inventorySnapshotStoreService.loadItems(snapshot.getId());
         List<CatalogSkin> catalog = catalogService.loadAll();
 
@@ -65,6 +68,7 @@ public class TradeUpApplicationService {
 
     public NextTierCatalogResponse loadNextTierCatalog(NextTierCatalogRequest request) throws Exception {
         InventorySnapshotRecord snapshot = resolveSnapshot(request.getSnapshotId());
+        assertCatalogSyncComplete(snapshot.getId());
         List<BuffItem> inventory = inventorySnapshotStoreService.loadItems(snapshot.getId());
         List<CatalogSkin> catalog = catalogService.loadAll();
 
@@ -167,6 +171,14 @@ public class TradeUpApplicationService {
             throw new IllegalArgumentException("No persisted inventory snapshot was found.");
         }
         return latest.get();
+    }
+
+    private void assertCatalogSyncComplete(long snapshotId) {
+        int discoveredCount = catalogSyncTaskStoreService.countAll(snapshotId);
+        int remainingCount = catalogSyncTaskStoreService.countOpen(snapshotId);
+        if (discoveredCount > 0 && remainingCount > 0) {
+            throw new IllegalArgumentException("目录同步尚未完成，当前快照还有 " + remainingCount + " 个 goods 待处理。请继续点击“从 BUFF 同步目录数据”，直到剩余为 0 后再生成方案。");
+        }
     }
 
     private String contractRarity(BuffItem item) {

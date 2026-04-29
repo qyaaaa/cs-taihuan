@@ -32,6 +32,11 @@ export const useTaskMonitor = () => {
     if (current === null && total === null) {
       return '等待后端返回处理进度'
     }
+    if (task.type === 'CATALOG_SYNC' && total !== null) {
+      const processed = current || 0
+      const discovered = total || 0
+      return `已处理 ${processed} 个，已发现 ${discovered} 个，待处理 ${Math.max(0, discovered - processed)} 个`
+    }
     if (total === null) {
       return `当前进度：${current}`
     }

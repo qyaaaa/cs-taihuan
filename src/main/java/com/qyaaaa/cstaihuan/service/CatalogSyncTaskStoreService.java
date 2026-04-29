@@ -47,7 +47,8 @@ public class CatalogSyncTaskStoreService {
                 "VALUES (?, ?, ?, ?, 0, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE " +
                 "collection_name = COALESCE(NULLIF(VALUES(collection_name), ''), collection_name), " +
-                "status = CASE WHEN status IN ('SUCCEEDED', 'SKIPPED', 'PROCESSING') THEN status ELSE 'PENDING' END, " +
+                "status = CASE WHEN status = 'PROCESSING' THEN status ELSE 'PENDING' END, " +
+                "failure_reason = NULL, " +
                 "updated_at = VALUES(updated_at)",
             Long.valueOf(snapshotId),
             normalizedGoodsId,

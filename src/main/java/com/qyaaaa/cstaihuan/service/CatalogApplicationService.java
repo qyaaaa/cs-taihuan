@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class CatalogApplicationService {
     private static final Logger log = LoggerFactory.getLogger(CatalogApplicationService.class);
+    private static final int UNLIMITED_DETAIL_REQUESTS = Integer.MAX_VALUE;
 
     private final CatalogService catalogService;
     private final InventorySnapshotStoreService inventorySnapshotStoreService;
@@ -77,20 +78,29 @@ public class CatalogApplicationService {
 
         int maxDetailRequests = resolveMaxDetailRequests(request);
         long requestIntervalMillis = resolveRequestIntervalMillis();
-        Set<String> existingGoodsIds = catalogService.loadExistingGoodsIds();
+        long cacheFreshMillis = resolveCacheFreshMillis();
+        long freshAfterTimestamp = System.currentTimeMillis() - cacheFreshMillis;
+        Set<String> freshGoodsIds = catalogService.loadFreshGoodsIds(freshAfterTimestamp);
+        Map<String, String> seedGoodsToSyncByGoodsId = new LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> entry : seedCollectionsByGoodsId.entrySet()) {
+            if (!freshGoodsIds.contains(entry.getKey())) {
+                seedGoodsToSyncByGoodsId.put(entry.getKey(), entry.getValue());
+            }
+        }
 
-        log.info("Catalog sync started, snapshotId={}, seedItemCount={}, seedGoodsCount={}, existingCatalogGoodsCount={}, maxDetailRequests={}, requestIntervalMillis={}",
-            Long.valueOf(snapshot.getId()), Integer.valueOf(inventory.size()), Integer.valueOf(seedGoodsIds.size()), Integer.valueOf(existingGoodsIds.size()),
-            Integer.valueOf(maxDetailRequests), Long.valueOf(requestIntervalMillis));
+        log.info("Catalog sync started, snapshotId={}, seedItemCount={}, seedGoodsCount={}, freshCatalogGoodsCount={}, maxDetailRequests={}, requestIntervalMillis={}, cacheFreshMillis={}",
+            Long.valueOf(snapshot.getId()), Integer.valueOf(inventory.size()), Integer.valueOf(seedGoodsIds.size()), Integer.valueOf(freshGoodsIds.size()),
+            detailRequestBudgetLabel(maxDetailRequests), Long.valueOf(requestIntervalMillis), Long.valueOf(cacheFreshMillis));
 
         catalogSyncTaskStoreService.resetProcessing(snapshot.getId());
-        catalogSyncTaskStoreService.enqueue(snapshot.getId(), seedCollectionsByGoodsId);
+        catalogSyncTaskStoreService.enqueue(snapshot.getId(), seedGoodsToSyncByGoodsId);
         Map<String, CatalogSkin> catalogByIdentity = new LinkedHashMap<String, CatalogSkin>();
         int processedGoodsCount = 0;
-        int skippedExistingCount = 0;
+        int skippedExistingCount = seedGoodsIds.size() - seedGoodsToSyncByGoodsId.size();
         boolean partial = false;
         if (progress != null) {
-            progress.update(5, Integer.valueOf(0), Integer.valueOf(maxDetailRequests), "Catalog 队列已创建，待处理 goods 数：" + catalogSyncTaskStoreService.countOpen(snapshot.getId()) + "。");
+            int remainingGoodsCount = catalogSyncTaskStoreService.countOpen(snapshot.getId());
+            progress.update(5, Integer.valueOf(0), Integer.valueOf(progressTotal(processedGoodsCount, maxDetailRequests, remainingGoodsCount)), "Catalog 队列已创建，待处理 goods 数：" + remainingGoodsCount + "，1 小时内已获取的 goods 会直接跳过。");
         }
 
         while (processedGoodsCount < maxDetailRequests) {
@@ -101,17 +111,17 @@ public class CatalogApplicationService {
             CatalogSyncTaskRecord task = nextTask.get();
             String goodsId = task.getGoodsId();
 
-            boolean seededGoods = seedGoodsIds.contains(goodsId);
-            if (existingGoodsIds.contains(goodsId) && !seededGoods) {
+            if (freshGoodsIds.contains(goodsId)) {
                 skippedExistingCount++;
-                catalogSyncTaskStoreService.markSkipped(task.getId(), "目录数据已存在，非种子 goods 跳过。");
+                catalogSyncTaskStoreService.markSkipped(task.getId(), "目录数据 1 小时内已获取，跳过重复请求。");
                 continue;
             }
 
             Map<String, Object> payload;
             try {
                 if (progress != null) {
-                    progress.update(catalogProgress(processedGoodsCount, maxDetailRequests), Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), "正在同步 goods_id=" + goodsId + "。");
+                    int remainingGoodsCount = catalogSyncTaskStoreService.countOpen(snapshot.getId());
+                    progress.update(catalogProgress(processedGoodsCount, maxDetailRequests, remainingGoodsCount), Integer.valueOf(processedGoodsCount), Integer.valueOf(progressTotal(processedGoodsCount, maxDetailRequests, remainingGoodsCount)), "正在同步 goods_id=" + goodsId + "。");
                 }
                 payload = buffApiClient.fetchGoodsDetail(
                     buffProperties.getBaseUrl(),
@@ -128,7 +138,8 @@ public class CatalogApplicationService {
                     log.warn("Catalog sync rate limited after partial progress, snapshotId={}, processedGoodsCount={}, remainingGoodsCount={}, persistedItemCount={}",
                         Long.valueOf(snapshot.getId()), Integer.valueOf(processedGoodsCount), Integer.valueOf(catalogSyncTaskStoreService.countOpen(snapshot.getId())), Integer.valueOf(persistedCount));
                     if (progress != null) {
-                        progress.update(100, Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), message);
+                        int remainingGoodsCount = catalogSyncTaskStoreService.countOpen(snapshot.getId());
+                        progress.update(100, Integer.valueOf(processedGoodsCount), Integer.valueOf(progressTotal(processedGoodsCount, maxDetailRequests, remainingGoodsCount)), message);
                     }
                     return new SyncCatalogResponse(
                         Long.valueOf(snapshot.getId()),
@@ -152,29 +163,45 @@ public class CatalogApplicationService {
             }
             processedGoodsCount++;
             if (progress != null) {
-                progress.update(catalogProgress(processedGoodsCount, maxDetailRequests), Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), "已处理 " + processedGoodsCount + " 个 goods，当前队列剩余 " + catalogSyncTaskStoreService.countOpen(snapshot.getId()) + " 个。");
+                int remainingGoodsCount = catalogSyncTaskStoreService.countOpen(snapshot.getId());
+                progress.update(catalogProgress(processedGoodsCount, maxDetailRequests, remainingGoodsCount), Integer.valueOf(processedGoodsCount), Integer.valueOf(progressTotal(processedGoodsCount, maxDetailRequests, remainingGoodsCount)), "已处理 " + processedGoodsCount + " 个 goods，当前队列剩余 " + remainingGoodsCount + " 个。");
             }
 
             try {
                 CatalogSkin skin = buffApiClient.parseCatalogSkinFromGoodsDetail(payload, task.getCollection());
+                String derivedCollection = skin == null ? task.getCollection() : skin.getCollection();
+                List<CatalogSkin> parsedSkins = new ArrayList<CatalogSkin>();
                 if (skin != null) {
-                    String identity = safe(skin.getGoodsId());
+                    parsedSkins.add(skin);
+                }
+                parsedSkins.addAll(buffApiClient.extractRelatedCatalogSkins(payload, derivedCollection));
+                Map<String, CatalogSkin> parsedByIdentity = new LinkedHashMap<String, CatalogSkin>();
+                for (CatalogSkin parsedSkin : parsedSkins) {
+                    String identity = safe(parsedSkin.getGoodsId());
                     if (identity.isEmpty()) {
-                        identity = safe(skin.getName());
+                        identity = safe(parsedSkin.getName());
                     }
                     if (!identity.isEmpty()) {
-                        catalogByIdentity.put(identity, skin);
-                        catalogService.upsertAll(Collections.singletonList(skin));
+                        parsedByIdentity.put(identity, parsedSkin);
+                        if (parsedSkin.getGoodsId() != null && !parsedSkin.getGoodsId().trim().isEmpty()) {
+                            freshGoodsIds.add(parsedSkin.getGoodsId().trim());
+                        }
                     }
+                }
+                if (!parsedByIdentity.isEmpty()) {
+                    catalogByIdentity.putAll(parsedByIdentity);
+                    catalogService.upsertAll(new ArrayList<CatalogSkin>(parsedByIdentity.values()));
                 }
 
                 List<String> relatedGoodsIds = buffApiClient.extractRelatedGoodsIds(payload);
-                String derivedCollection = skin == null ? task.getCollection() : skin.getCollection();
                 for (String relatedGoodsId : relatedGoodsIds) {
                     if (relatedGoodsId == null || relatedGoodsId.trim().isEmpty()) {
                         continue;
                     }
                     String normalizedGoodsId = relatedGoodsId.trim();
+                    if (freshGoodsIds.contains(normalizedGoodsId)) {
+                        continue;
+                    }
                     catalogSyncTaskStoreService.enqueue(snapshot.getId(), normalizedGoodsId, derivedCollection);
                 }
                 catalogSyncTaskStoreService.markSucceeded(task.getId());
@@ -187,14 +214,15 @@ public class CatalogApplicationService {
                 sleepBetweenGoodsDetailRequests(requestIntervalMillis, progress);
             }
         }
-        if (processedGoodsCount >= maxDetailRequests && catalogSyncTaskStoreService.countOpen(snapshot.getId()) > 0) {
+        if (!isUnlimited(maxDetailRequests) && processedGoodsCount >= maxDetailRequests && catalogSyncTaskStoreService.countOpen(snapshot.getId()) > 0) {
             partial = true;
             log.info("Catalog sync request budget reached, snapshotId={}, processedGoodsCount={}, openGoodsCount={}",
                 Long.valueOf(snapshot.getId()), Integer.valueOf(processedGoodsCount), Integer.valueOf(catalogSyncTaskStoreService.countOpen(snapshot.getId())));
         }
 
         if (progress != null) {
-            progress.update(94, Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), "Catalog 请求完成，正在写入数据库。");
+            int remainingGoodsCount = catalogSyncTaskStoreService.countOpen(snapshot.getId());
+            progress.update(94, Integer.valueOf(processedGoodsCount), Integer.valueOf(progressTotal(processedGoodsCount, maxDetailRequests, remainingGoodsCount)), "Catalog 请求完成，正在写入数据库。");
         }
         List<CatalogSkin> items = new ArrayList<CatalogSkin>(catalogByIdentity.values());
         Collections.sort(items, new Comparator<CatalogSkin>() {
@@ -214,12 +242,14 @@ public class CatalogApplicationService {
         int persistedCount = catalogService.upsertAll(items);
         int remainingGoodsCount = catalogSyncTaskStoreService.countOpen(snapshot.getId());
         partial = partial || remainingGoodsCount > 0;
-        String message = buildMessage(persistedCount, processedGoodsCount, remainingGoodsCount, partial, false);
+        String message = processedGoodsCount <= 0 && skippedExistingCount > 0 && remainingGoodsCount <= 0
+            ? "目录数据 1 小时内已获取，已跳过 BUFF 请求。"
+            : buildMessage(persistedCount, processedGoodsCount, remainingGoodsCount, partial, false);
         log.info("Catalog sync finished, snapshotId={}, discoveredGoodsCount={}, processedGoodsCount={}, skippedExistingCount={}, remainingGoodsCount={}, persistedItemCount={}, partial={}",
             Long.valueOf(snapshot.getId()), Integer.valueOf(catalogSyncTaskStoreService.countAll(snapshot.getId())), Integer.valueOf(processedGoodsCount),
             Integer.valueOf(skippedExistingCount), Integer.valueOf(remainingGoodsCount), Integer.valueOf(persistedCount), Boolean.valueOf(partial));
         if (progress != null) {
-            progress.update(100, Integer.valueOf(processedGoodsCount), Integer.valueOf(maxDetailRequests), message);
+            progress.update(100, Integer.valueOf(processedGoodsCount), Integer.valueOf(progressTotal(processedGoodsCount, maxDetailRequests, remainingGoodsCount)), message);
         }
 
         return new SyncCatalogResponse(
@@ -253,22 +283,48 @@ public class CatalogApplicationService {
     }
 
     private int resolveMaxDetailRequests(SyncCatalogRequest request) {
-        int configured = buffProperties.getCatalogSync().getMaxDetailRequestsPerRun();
-        if (request == null || request.getMaxDetailRequests() == null) {
-            return configured;
+        if (request != null && request.getMaxDetailRequests() != null) {
+            return Math.max(1, request.getMaxDetailRequests().intValue());
         }
-        return Math.max(1, request.getMaxDetailRequests().intValue());
+        int configured = buffProperties.getCatalogSync().getMaxDetailRequestsPerRun();
+        return configured <= 0 ? UNLIMITED_DETAIL_REQUESTS : configured;
     }
 
     private long resolveRequestIntervalMillis() {
         return Math.max(1000L, buffProperties.getCatalogSync().getRequestIntervalMillis());
     }
 
-    private int catalogProgress(int processedGoodsCount, int maxDetailRequests) {
+    private long resolveCacheFreshMillis() {
+        return Math.max(0L, buffProperties.getCatalogSync().getCacheFreshMillis());
+    }
+
+    private int catalogProgress(int processedGoodsCount, int maxDetailRequests, int remainingGoodsCount) {
+        if (isUnlimited(maxDetailRequests)) {
+            int total = processedGoodsCount + Math.max(0, remainingGoodsCount);
+            if (total <= 0) {
+                return 5;
+            }
+            return Math.min(92, 5 + (int) Math.floor((double) processedGoodsCount * 87.0d / (double) total));
+        }
         if (maxDetailRequests <= 0) {
             return 5;
         }
         return Math.min(92, 5 + (int) Math.floor((double) processedGoodsCount * 87.0d / (double) maxDetailRequests));
+    }
+
+    private int progressTotal(int processedGoodsCount, int maxDetailRequests, int remainingGoodsCount) {
+        if (isUnlimited(maxDetailRequests)) {
+            return Math.max(1, Math.max(processedGoodsCount, processedGoodsCount + Math.max(0, remainingGoodsCount)));
+        }
+        return maxDetailRequests;
+    }
+
+    private boolean isUnlimited(int maxDetailRequests) {
+        return maxDetailRequests == UNLIMITED_DETAIL_REQUESTS;
+    }
+
+    private String detailRequestBudgetLabel(int maxDetailRequests) {
+        return isUnlimited(maxDetailRequests) ? "ALL" : String.valueOf(maxDetailRequests);
     }
 
     private void sleepBetweenGoodsDetailRequests(long intervalMillis, AsyncTaskService.TaskProgress progress) {

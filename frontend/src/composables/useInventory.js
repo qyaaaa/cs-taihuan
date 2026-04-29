@@ -21,6 +21,8 @@ const normalizeInventoryItem = (item) => {
   }
 }
 
+const INVENTORY_RARITY_OPTIONS = ['consumer', 'industrial', 'mil-spec', 'restricted', 'classified', 'covert']
+
 export const useInventory = ({ pollTask, updateInventoryTask }) => {
   const loadingInventory = ref(false)
   const inventoryForm = reactive({
@@ -41,6 +43,7 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
     totalItems: 0,
     currentPage: 1,
     pageSize: 50,
+    rarity: 'all',
     outputPath: '',
     items: [],
     usePersistedPaging: false,
@@ -100,6 +103,7 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
       game: inventoryForm.game,
       page,
       pageSize: 50,
+      rarity: inventoryState.rarity,
     })
     applyPagedInventory(payload)
   }
@@ -181,15 +185,22 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
     }
   }
 
+  const changeInventoryRarity = async (rarity) => {
+    inventoryState.rarity = rarity || 'all'
+    await loadPersistedInventoryPage(1)
+  }
+
   return {
     loadingInventory,
     inventoryForm,
     inventoryState,
     inventoryStats,
     inventoryItems,
+    inventoryRarityOptions: INVENTORY_RARITY_OPTIONS,
     restorePersistedInventory,
     fetchInventory,
     forceFetchInventory,
     changeInventoryPage,
+    changeInventoryRarity,
   }
 }

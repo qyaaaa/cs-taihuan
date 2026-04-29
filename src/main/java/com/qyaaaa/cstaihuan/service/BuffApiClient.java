@@ -44,6 +44,7 @@ public class BuffApiClient {
             }
             log.info("Requesting BUFF inventory page, game={}, page={}, pageSize={}", game, Integer.valueOf(page), Integer.valueOf(pageSize));
             Map<String, Object> payload = requestInventory(baseUrl, cookie, game, page, pageSize);
+            requireAuthenticatedInventoryPayload(payload);
             List<BuffItem> pageItems = extractItems(payload);
             Integer payloadTotalPages = totalPages(payload, pageSize);
             if (payloadTotalPages != null) {
@@ -68,6 +69,11 @@ public class BuffApiClient {
             page++;
         }
         return items;
+    }
+
+    public boolean validateInventorySession(String baseUrl, String cookie, String game) {
+        Map<String, Object> payload = requestInventory(baseUrl, cookie, game, 1, 1);
+        return isAuthenticatedInventoryPayload(payload);
     }
 
     public Map<String, Object> fetchGoodsDetail(String baseUrl, String cookie, String game, String goodsId) {
@@ -163,6 +169,14 @@ public class BuffApiClient {
         return goodsIds;
     }
 
+    public List<CatalogSkin> extractRelatedCatalogSkins(Map<String, Object> payload, String fallbackCollection) {
+        Map<String, Object> data = mapValue(payload.get("data"));
+        Map<String, CatalogSkin> skinsByIdentity = new LinkedHashMap<String, CatalogSkin>();
+        collectRelatedCatalogSkins(skinsByIdentity, data.get("relative_goods"), fallbackCollection);
+        collectRelatedCatalogSkins(skinsByIdentity, data.get("goods_relations"), fallbackCollection);
+        return new ArrayList<CatalogSkin>(skinsByIdentity.values());
+    }
+
     private Map<String, Object> requestInventory(String baseUrl, String cookie, String game, int page, int pageSize) {
         String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/steam_inventory")
             .queryParam("game", game)
@@ -202,6 +216,64 @@ public class BuffApiClient {
         return payload;
     }
 
+    private void requireAuthenticatedInventoryPayload(Map<String, Object> payload) {
+        if (!isAuthenticatedInventoryPayload(payload)) {
+            Map<String, Object> data = mapValue(payload == null ? null : payload.get("data"));
+            log.warn("BUFF inventory payload is not authenticated, keys={}, dataKeys={}",
+                payload == null ? "null" : payload.keySet(), data.keySet());
+            throw new IllegalArgumentException("BUFF 会话已失效或 Cookie 不完整，请重新登录 BUFF 后导入 Cookie。");
+        }
+    }
+
+    private boolean isAuthenticatedInventoryPayload(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty() || hasLoginFailureMarker(payload)) {
+            return false;
+        }
+        Object dataObj = payload.get("data");
+        if (!(dataObj instanceof Map)) {
+            return false;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) dataObj;
+        if (data.isEmpty() || hasLoginFailureMarker(data)) {
+            return false;
+        }
+        return data.containsKey("items")
+            || data.containsKey("inventory")
+            || data.containsKey("goods_infos")
+            || data.containsKey("page_num")
+            || data.containsKey("total_page")
+            || data.containsKey("total_count");
+    }
+
+    private static boolean hasLoginFailureMarker(Map<String, Object> payload) {
+        StringBuilder text = new StringBuilder();
+        appendMarkerText(text, payload.get("code"));
+        appendMarkerText(text, payload.get("error"));
+        appendMarkerText(text, payload.get("error_code"));
+        appendMarkerText(text, payload.get("message"));
+        appendMarkerText(text, payload.get("msg"));
+        appendMarkerText(text, payload.get("status"));
+        String marker = text.toString().toLowerCase();
+        return marker.contains("login")
+            || marker.contains("not_logged")
+            || marker.contains("not logged")
+            || marker.contains("unauthorized")
+            || marker.contains("forbidden")
+            || marker.contains("csrf")
+            || marker.contains("auth")
+            || marker.contains("未登录")
+            || marker.contains("请先登录")
+            || marker.contains("登录后")
+            || marker.contains("会话失效");
+    }
+
+    private static void appendMarkerText(StringBuilder target, Object value) {
+        if (value != null) {
+            target.append(' ').append(String.valueOf(value));
+        }
+    }
+
     private double[] extractPaintwearRange(Object value) {
         if (value instanceof List) {
             List<?> list = (List<?>) value;
@@ -239,6 +311,112 @@ public class BuffApiClient {
                 }
             }
         }
+    }
+
+    private void collectRelatedCatalogSkins(Map<String, CatalogSkin> target, Object value, String fallbackCollection) {
+        if (value instanceof List) {
+            List<?> list = (List<?>) value;
+            for (Object item : list) {
+                collectRelatedCatalogSkins(target, item, fallbackCollection);
+            }
+            return;
+        }
+        if (!(value instanceof Map)) {
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> row = (Map<String, Object>) value;
+        CatalogSkin skin = parseCatalogSkinFromRelatedRow(row, fallbackCollection);
+        if (skin != null) {
+            String identity = catalogSkinIdentity(skin);
+            if (!identity.isEmpty()) {
+                target.put(identity, skin);
+            }
+        }
+        for (Object nested : row.values()) {
+            if (nested instanceof Map || nested instanceof List) {
+                collectRelatedCatalogSkins(target, nested, fallbackCollection);
+            }
+        }
+    }
+
+    private CatalogSkin parseCatalogSkinFromRelatedRow(Map<String, Object> row, String fallbackCollection) {
+        Map<String, Object> goodsInfo = mapValue(row.get("goods_info"));
+        Map<String, Object> info = mapValue(mergeFirst(row.get("info"), goodsInfo.get("info")));
+        Map<String, Object> tags = mapValue(mergeFirst(row.get("tags"), goodsInfo.get("tags"), info.get("tags")));
+        Map<String, Object> rarityTag = mapValue(tags.get("rarity"));
+        Map<String, Object> categoryTag = mapValue(tags.get("category"));
+        Map<String, Object> weaponTag = mapValue(tags.get("weapon"));
+        Map<String, Object> itemsetTag = mapValue(tags.get("itemset"));
+        Map<String, Object> weaponcaseTag = mapValue(tags.get("weaponcase"));
+        Map<String, Object> merged = new LinkedHashMap<String, Object>();
+        merged.putAll(info);
+        merged.putAll(goodsInfo);
+        merged.putAll(row);
+
+        String categoryKey = firstNonBlank(
+            stringValue(categoryTag, "internal_name"),
+            stringValue(weaponTag, "internal_name"),
+            stringValue(merged, "category", "category_name")
+        );
+        if (categoryKey == null || !categoryKey.startsWith("weapon_")) {
+            return null;
+        }
+
+        String rarity = normalizeRarity(
+            firstNonBlank(
+                stringValue(rarityTag, "internal_name"),
+                stringValue(merged, "rarity", "quality")
+            )
+        );
+        String collection = "gold".equals(rarity)
+            ? firstNonBlank(
+                stringValue(weaponcaseTag, "localized_name"),
+                stringValue(itemsetTag, "localized_name"),
+                stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(merged, "collection", "collection_name"),
+                fallbackCollection
+            )
+            : firstNonBlank(
+                stringValue(itemsetTag, "localized_name"),
+                stringValue(weaponcaseTag, "localized_name"),
+                stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
+                stringValue(merged, "collection", "collection_name"),
+                fallbackCollection
+            );
+        String name = firstNonBlank(
+            stringValue(merged, "market_hash_name", "name", "short_name")
+        );
+        if (name == null || collection == null || rarity == null) {
+            return null;
+        }
+
+        CatalogSkin skin = new CatalogSkin();
+        skin.setGoodsId(firstNonBlank(stringValue(merged, "goods_id", "id")));
+        skin.setName(name);
+        skin.setCollection(collection);
+        skin.setRarity(rarity);
+        skin.setCategoryKey(categoryKey);
+        skin.setQualityLabel(firstNonBlank(
+            stringValue(rarityTag, "localized_name"),
+            stringValue(merged, "quality_name", "rarity_name")
+        ));
+        skin.setPrice(doubleValue(merged, 0.0d, "sell_min_price", "quick_price", "price", "steam_price_cny"));
+
+        double[] floatRange = extractPaintwearRange(mergeFirst(row.get("paintwear_range"), goodsInfo.get("paintwear_range"), info.get("paintwear_range")));
+        skin.setMinFloat(floatRange[0]);
+        skin.setMaxFloat(floatRange[1]);
+        return skin;
+    }
+
+    private String catalogSkinIdentity(CatalogSkin skin) {
+        String identity = firstNonBlank(skin.getGoodsId());
+        if (identity == null) {
+            identity = firstNonBlank(skin.getName());
+        }
+        return identity == null ? "" : identity;
     }
 
     private List<BuffItem> extractItems(Map<String, Object> payload) {

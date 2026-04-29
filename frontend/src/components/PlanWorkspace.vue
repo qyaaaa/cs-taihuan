@@ -1,5 +1,7 @@
 <script setup>
-defineProps({
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+const props = defineProps({
   plans: {
     type: Array,
     required: true,
@@ -27,6 +29,48 @@ defineProps({
 })
 
 defineEmits(['select-plan', 'update-filter'])
+
+const detailPanel = ref(null)
+const planListMaxHeight = ref('')
+let detailResizeObserver = null
+
+const updatePlanListHeight = async () => {
+  await nextTick()
+  const height = detailPanel.value?.offsetHeight || 0
+  planListMaxHeight.value = height > 0 ? `${Math.ceil(height)}px` : ''
+}
+
+const observeDetailPanel = async () => {
+  await updatePlanListHeight()
+  if (detailResizeObserver) {
+    detailResizeObserver.disconnect()
+    detailResizeObserver = null
+  }
+  if (typeof ResizeObserver !== 'undefined' && detailPanel.value) {
+    detailResizeObserver = new ResizeObserver(() => {
+      updatePlanListHeight()
+    })
+    detailResizeObserver.observe(detailPanel.value)
+  }
+}
+
+onMounted(() => {
+  observeDetailPanel()
+  window.addEventListener('resize', updatePlanListHeight)
+})
+
+onBeforeUnmount(() => {
+  if (detailResizeObserver) {
+    detailResizeObserver.disconnect()
+  }
+  window.removeEventListener('resize', updatePlanListHeight)
+})
+
+watch(
+  () => [props.selectedPlan, props.plans.length],
+  () => observeDetailPanel(),
+  { flush: 'post' }
+)
 
 const rarityOrder = ['consumer', 'industrial', 'mil-spec', 'restricted', 'classified', 'covert', 'gold']
 const rarityLabels = {
@@ -63,6 +107,7 @@ const currency = (value) => `¥${Number(value || 0).toFixed(2)}`
 const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
 const rarityLabel = (rarity) => rarityLabels[rarity] || rarity || '未知档位'
 const nextRarity = (rarity) => rarityOrder[rarityOrder.indexOf(rarity) + 1]
+const metricValue = (item, camelKey, snakeKey) => item?.[camelKey] ?? item?.[snakeKey]
 const imageSource = (item) => {
   return (
     item?.imageUrl
@@ -139,7 +184,7 @@ const contractTitle = (rarity) => {
     </div>
 
     <div class="plans-layout">
-      <aside class="plan-list">
+      <aside class="plan-list" :style="{ maxHeight: planListMaxHeight }">
         <button
           v-for="(plan, index) in plans"
           :key="index"
@@ -150,19 +195,31 @@ const contractTitle = (rarity) => {
         >
           <div class="plan-row-top">
             <span>#{{ String(index + 1).padStart(2, '0') }}</span>
-            <strong>{{ currency(plan.expectedOutputValue) }}</strong>
+            <strong>{{ rarityLabel(plan.rarity) }}</strong>
           </div>
           <h3>{{ contractTitle(plan.rarity) }}</h3>
-          <div class="plan-inline">
-            <label>利润</label>
-            <b>{{ currency(plan.expectedProfit) }}</b>
-            <label>回报率</label>
-            <b>{{ percent(plan.roi) }}</b>
+          <div class="plan-row-metrics">
+            <div>
+              <label>期望</label>
+              <b>{{ currency(plan.expectedOutputValue) }}</b>
+            </div>
+            <div>
+              <label>投入</label>
+              <b>{{ currency(plan.inputCost) }}</b>
+            </div>
+            <div>
+              <label>利润</label>
+              <b>{{ currency(plan.expectedProfit) }}</b>
+            </div>
+            <div>
+              <label>ROI</label>
+              <b>{{ percent(plan.roi) }}</b>
+            </div>
           </div>
         </button>
       </aside>
 
-      <section v-if="selectedPlan" class="plan-detail">
+      <section v-if="selectedPlan" ref="detailPanel" class="plan-detail">
         <div class="detail-hero">
           <div>
             <span class="section-kicker">当前合同</span>
@@ -205,7 +262,7 @@ const contractTitle = (rarity) => {
                 </div>
                 <div class="detail-side">
                   <span>{{ currency(item.price) }}</span>
-                  <em>{{ item.floatValue == null ? '--' : item.floatValue.toFixed(4) }}</em>
+                  <em>{{ metricValue(item, 'floatValue', 'float_value') == null ? '--' : Number(metricValue(item, 'floatValue', 'float_value')).toFixed(4) }}</em>
                 </div>
               </div>
             </div>
@@ -221,6 +278,7 @@ const contractTitle = (rarity) => {
                 </div>
                 <div class="detail-side">
                   <span>{{ percent(outcome.probability) }}</span>
+                  <em>磨损 {{ metricValue(outcome, 'estimatedFloat', 'estimated_float') == null ? '--' : Number(metricValue(outcome, 'estimatedFloat', 'estimated_float')).toFixed(6) }}</em>
                   <em>{{ currency(outcome.estimatedSalePrice) }}</em>
                 </div>
               </div>
@@ -229,7 +287,7 @@ const contractTitle = (rarity) => {
         </div>
       </section>
 
-      <section v-else class="plan-detail empty-state">
+      <section v-else ref="detailPanel" class="plan-detail empty-state">
         <h3>{{ totalPlanCount > 0 ? '没有符合条件的方案' : '还没有方案' }}</h3>
         <p>{{ totalPlanCount > 0 ? '调整筛选条件后再查看。' : '先抓取库存或载入本地库存，再运行一次方案计算。' }}</p>
       </section>
