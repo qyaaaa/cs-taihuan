@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class CatalogApplicationService {
     private final BuffApiClient buffApiClient;
     private final BuffProperties buffProperties;
     private final CatalogSyncTaskStoreService catalogSyncTaskStoreService;
+    private final AtomicBoolean catalogSyncRunning = new AtomicBoolean(false);
 
     public CatalogApplicationService(CatalogService catalogService, InventorySnapshotStoreService inventorySnapshotStoreService, BuffSessionService buffSessionService, BuffApiClient buffApiClient, BuffProperties buffProperties, CatalogSyncTaskStoreService catalogSyncTaskStoreService) {
         this.catalogService = catalogService;
@@ -43,14 +45,25 @@ public class CatalogApplicationService {
     }
 
     public SyncCatalogResponse syncCatalog(SyncCatalogRequest request) throws Exception {
-        return syncCatalog(request, null);
+        return syncCatalogWithLock(request, null);
     }
 
     public SyncCatalogResponse syncCatalogAsync(SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
-        return syncCatalog(request, progress);
+        return syncCatalogWithLock(request, progress);
     }
 
-    private SyncCatalogResponse syncCatalog(SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+    private SyncCatalogResponse syncCatalogWithLock(SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+        if (!catalogSyncRunning.compareAndSet(false, true)) {
+            throw new IllegalArgumentException("已有目录同步任务正在运行，请等待当前任务完成后再试。");
+        }
+        try {
+            return syncCatalogInternal(request, progress);
+        } finally {
+            catalogSyncRunning.set(false);
+        }
+    }
+
+    private SyncCatalogResponse syncCatalogInternal(SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
         InventorySnapshotRecord snapshot = resolveSnapshot(request == null ? null : request.getSnapshotId());
         List<BuffItem> inventory = inventorySnapshotStoreService.loadItems(snapshot.getId());
         if (inventory.isEmpty()) {
