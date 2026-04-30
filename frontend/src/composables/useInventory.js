@@ -187,7 +187,14 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
 
   const changeInventoryRarity = async (rarity) => {
     inventoryState.rarity = rarity || 'all'
-    await loadPersistedInventoryPage(1)
+    loadingInventory.value = true
+    try {
+      await loadPersistedInventoryPage(1)
+    } catch (error) {
+      ElMessage.error(error.message || '筛选库存失败')
+    } finally {
+      loadingInventory.value = false
+    }
   }
 
   return {

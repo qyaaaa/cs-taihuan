@@ -25,6 +25,15 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class TradeUpApplicationService {
+    private static final String[] CONTRACT_RARITIES = new String[] {
+        "consumer",
+        "industrial",
+        "mil-spec",
+        "restricted",
+        "classified",
+        "covert"
+    };
+
     private final InventorySnapshotStoreService inventorySnapshotStoreService;
     private final CatalogService catalogService;
     private final TradeUpProperties tradeUpProperties;
@@ -53,17 +62,41 @@ public class TradeUpApplicationService {
         int topK = request.getTopK() == null ? 5 : request.getTopK().intValue();
 
         TradeUpOptimizer optimizer = new TradeUpOptimizer(catalog, saleFeeRate, tradeUpProperties.getOutputPriceFactors(), tradeUpProperties.getOutputPriceBands());
-        List<TradeUpPlan> plans = optimizer.findBestContracts(
-            optimizer.enrichInventory(inventory),
-            topK,
-            maxItemsPerRarity,
-            maxCombinations,
-            request.getSortBy(),
-            request.getRarity(),
-            request.getTrackType(),
-            request.getContractType()
-        );
+        List<BuffItem> enrichedInventory = optimizer.enrichInventory(inventory);
+        List<TradeUpPlan> plans = isAllRarity(request.getRarity())
+            ? findBestContractsByRarity(optimizer, enrichedInventory, topK, maxItemsPerRarity, maxCombinations, request)
+            : optimizer.findBestContracts(
+                enrichedInventory,
+                topK,
+                maxItemsPerRarity,
+                maxCombinations,
+                request.getSortBy(),
+                request.getRarity(),
+                request.getTrackType(),
+                request.getContractType()
+            );
         return new OptimizeTradeUpResponse(plans);
+    }
+
+    private List<TradeUpPlan> findBestContractsByRarity(TradeUpOptimizer optimizer, List<BuffItem> inventory, int topK, int maxItemsPerRarity, int maxCombinations, OptimizeTradeUpRequest request) {
+        List<TradeUpPlan> plans = new ArrayList<TradeUpPlan>();
+        for (String rarity : CONTRACT_RARITIES) {
+            plans.addAll(optimizer.findBestContracts(
+                inventory,
+                topK,
+                maxItemsPerRarity,
+                maxCombinations,
+                request.getSortBy(),
+                rarity,
+                request.getTrackType(),
+                request.getContractType()
+            ));
+        }
+        return plans;
+    }
+
+    private boolean isAllRarity(String rarity) {
+        return rarity == null || rarity.trim().isEmpty() || "all".equals(rarity);
     }
 
     public NextTierCatalogResponse loadNextTierCatalog(NextTierCatalogRequest request) throws Exception {
