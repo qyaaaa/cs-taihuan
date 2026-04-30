@@ -151,6 +151,44 @@ const planDisabledReason = computed(() => {
   return snapshotRequiredReason.value || catalogMissingReason.value
 })
 
+const pageLoading = computed(() => {
+  if (activePage.value === 'inventory') {
+    return inventory.loadingInventory.value
+  }
+  if (activePage.value === 'plans') {
+    return plans.loadingPlans.value
+  }
+  if (activePage.value === 'data') {
+    return session.loadingSession.value
+      || inventory.loadingInventory.value
+      || plans.loadingCatalog.value
+      || plans.loadingNextTier.value
+  }
+  return session.loadingSession.value || inventory.loadingInventory.value
+})
+
+const pageLoadingText = computed(() => {
+  if (activePage.value === 'plans') {
+    return '正在生成推荐方案'
+  }
+  if (activePage.value === 'inventory') {
+    return '正在加载库存数据'
+  }
+  if (plans.loadingCatalog.value) {
+    return '正在同步目录数据'
+  }
+  if (plans.loadingNextTier.value) {
+    return '正在保存关联档位数据'
+  }
+  if (inventory.loadingInventory.value) {
+    return '正在处理库存数据'
+  }
+  if (session.loadingSession.value) {
+    return '正在校验 BUFF 会话'
+  }
+  return '加载中'
+})
+
 const generatePlansOnEnter = () => {
   if (planDisabledReason.value || plans.loadingPlans.value) {
     return
@@ -228,7 +266,7 @@ onMounted(() => {
         </div>
       </header>
 
-      <main class="page-stack">
+      <main class="page-stack" :class="{ 'is-loading': pageLoading }" :aria-busy="pageLoading">
         <OverviewPage
           v-if="activePage === 'overview'"
           :status-cards="statusCards"
@@ -300,6 +338,11 @@ onMounted(() => {
           @sync-catalog="plans.syncCatalog"
           @persist-next-tier="plans.persistNextTierCatalog"
         />
+
+        <div v-if="pageLoading" class="page-loading-cover" role="status" aria-live="polite">
+          <span class="loading-ring" aria-hidden="true"></span>
+          <strong>{{ pageLoadingText }}</strong>
+        </div>
       </main>
     </div>
 

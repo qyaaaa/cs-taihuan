@@ -25,5 +25,9 @@ public class BuffProperties {
         private long requestIntervalMillis = 5000L;
         private int maxDetailRequestsPerRun = 0;
         private long cacheFreshMillis = 3600000L;
+        private boolean scheduledEnabled = true;
+        private long scheduledInitialDelayMillis = 60000L;
+        private long scheduledFixedDelayMillis = 900000L;
+        private int scheduledMaxDetailRequestsPerRun = 30;
     }
 }

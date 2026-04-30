@@ -127,15 +127,15 @@ defineEmits([
           <h2>数据任务</h2>
         </div>
         <p class="surface-note">
-          长任务统一在这里启动。库存抓取和目录同步可能持续几分钟，任务进度会在下方持续刷新。
+          长任务统一在这里启动。目录数据会由后端定时补齐；按钮用于立即触发或兜底补救。
         </p>
         <div v-if="catalogMissing" class="action-hint-panel warning">
           <strong>目录数据为空</strong>
-          <span>请先点击“从 BUFF 同步目录数据”，完成后再保存关联档位或生成方案。</span>
+          <span>后端会定时同步，也可以先点击“立即同步目录数据”补齐后再生成方案。</span>
         </div>
         <div v-else-if="planState.catalogIncomplete" class="action-hint-panel warning">
           <strong>目录数据未补全</strong>
-          <span>当前产物池可能缺少上级皮肤，请继续点击“从 BUFF 同步目录数据”，直到剩余待处理 goods 为 0。</span>
+          <span>当前产物池可能缺少上级皮肤，可等待定时任务或点击“立即同步目录数据”处理剩余 goods。</span>
         </div>
         <div class="data-job-grid">
           <button type="button" class="action-row" :disabled="loadingInventory || !canFetchInventory" @click="$emit('fetch-inventory')">
@@ -147,8 +147,8 @@ defineEmits([
             <span>{{ fetchInventoryDisabledReason || '忽略远端变化判断，重新落库当前库存。' }}</span>
           </button>
           <button type="button" class="action-row" :disabled="loadingCatalog || !canSyncCatalog" @click="$emit('sync-catalog')">
-            <strong>{{ loadingCatalog ? '目录同步中' : '从 BUFF 同步目录数据' }}</strong>
-            <span>{{ syncCatalogDisabledReason || '根据库存 goods_id 补全市场详情，1 小时内已获取的数据会跳过。' }}</span>
+            <strong>{{ loadingCatalog ? '目录同步中' : '立即同步目录数据' }}</strong>
+            <span>{{ syncCatalogDisabledReason || '兜底触发一次 BUFF 目录补齐；平常由后端定时任务自动处理。' }}</span>
           </button>
           <button type="button" class="action-row" :disabled="loadingNextTier || !canPersistNextTier" @click="$emit('persist-next-tier')">
             <strong>{{ loadingNextTier ? '保存中' : '保存关联档位数据' }}</strong>

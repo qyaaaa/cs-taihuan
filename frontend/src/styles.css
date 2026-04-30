@@ -215,7 +215,47 @@ button:focus-visible,
 }
 
 .page-stack {
+  position: relative;
+  min-height: 420px;
   padding-top: 18px;
+}
+
+.page-stack.is-loading {
+  pointer-events: none;
+}
+
+.page-loading-cover {
+  position: absolute;
+  inset: 18px 0 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(17, 22, 29, 0.94), rgba(14, 17, 22, 0.9)),
+    rgba(14, 17, 22, 0.92);
+  color: var(--text);
+  backdrop-filter: blur(10px);
+}
+
+.page-loading-cover strong {
+  margin-top: 58px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.loading-ring {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border: 2px solid rgba(91, 124, 250, 0.18);
+  border-top-color: var(--accent);
+  border-right-color: var(--accent-strong);
+  border-radius: 50%;
+  animation: spin 780ms linear infinite;
+  box-shadow: 0 0 24px rgba(91, 124, 250, 0.16);
 }
 
 .page-panel {
@@ -1119,6 +1159,12 @@ button:focus-visible,
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

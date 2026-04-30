@@ -6,9 +6,11 @@ import com.qyaaaa.cstaihuan.config.TradeUpProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableConfigurationProperties({BuffProperties.class, TradeUpProperties.class, BuffSessionProperties.class})
+@EnableScheduling
 public class CsTaihuanApplication {
     public static void main(String[] args) {
         SpringApplication.run(CsTaihuanApplication.class, args);
