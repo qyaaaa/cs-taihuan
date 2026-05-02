@@ -1,5 +1,6 @@
 package com.qyaaaa.cstaihuan.dto;
 
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
@@ -8,18 +9,18 @@ import lombok.Data;
 
 @Data
 public class FetchInventoryRequest {
-    @NotBlank(message = "outputPath 不能为空")
+    @NotBlank(message = ErrorMessages.OUTPUT_PATH_NOT_BLANK)
     private String outputPath;
 
-    @Size(max = 32, message = "game 长度不能超过 32")
+    @Size(max = 32, message = ErrorMessages.GAME_SIZE)
     private String game;
 
-    @Min(value = 1, message = "pageSize 不能小于 1")
-    @Max(value = 200, message = "pageSize 不能大于 200")
+    @Min(value = 1, message = ErrorMessages.PAGE_SIZE_MIN)
+    @Max(value = 200, message = ErrorMessages.PAGE_SIZE_MAX)
     private Integer pageSize;
 
-    @Min(value = 1, message = "maxPages 不能小于 1")
-    @Max(value = 1000, message = "maxPages 不能大于 1000")
+    @Min(value = 1, message = ErrorMessages.MAX_PAGES_MIN)
+    @Max(value = 1000, message = ErrorMessages.MAX_PAGES_MAX)
     private Integer maxPages;
 
     private String cookie;

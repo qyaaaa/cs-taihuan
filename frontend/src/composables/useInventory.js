@@ -23,8 +23,9 @@ const normalizeInventoryItem = (item) => {
 
 const INVENTORY_RARITY_OPTIONS = ['consumer', 'industrial', 'mil-spec', 'restricted', 'classified', 'covert']
 
-export const useInventory = ({ pollTask, updateInventoryTask }) => {
+export const useInventory = ({ pollTask, updateInventoryTask, accountId }) => {
   const loadingInventory = ref(false)
+  const loadingInventoryPage = ref(false)
   const inventoryForm = reactive({
     outputPath: 'data/buff_inventory.json',
     inventoryPath: 'data/buff_inventory.json',
@@ -72,6 +73,21 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
 
   const inventoryItems = computed(() => inventoryState.items || [])
 
+  const resolveAccountId = () => accountId?.value || null
+
+  const resetInventory = () => {
+    inventoryState.snapshotId = null
+    inventoryState.itemCount = 0
+    inventoryState.tradableCount = 0
+    inventoryState.withFloatCount = 0
+    inventoryState.totalCost = 0
+    inventoryState.totalItems = 0
+    inventoryState.currentPage = 1
+    inventoryState.items = []
+    inventoryState.usePersistedPaging = false
+    inventoryState.lastAction = '尚未加载库存'
+  }
+
   const normalizeInventory = (payload, actionLabel) => {
     inventoryState.snapshotId = payload.snapshotId || null
     inventoryState.itemCount = payload.itemCount || 0
@@ -104,12 +120,12 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
       page,
       pageSize: 50,
       rarity: inventoryState.rarity,
-    })
+    }, resolveAccountId())
     applyPagedInventory(payload)
   }
 
   const restorePersistedInventory = async () => {
-    loadingInventory.value = true
+    loadingInventoryPage.value = true
     try {
       await loadPersistedInventoryPage(1, null)
       inventoryState.lastAction = '已从数据库载入最近一次保存的武器库存'
@@ -120,7 +136,7 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
       }
       throw error
     } finally {
-      loadingInventory.value = false
+      loadingInventoryPage.value = false
     }
   }
 
@@ -133,7 +149,7 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
         pageSize: inventoryForm.pageSize,
         maxPages: inventoryForm.maxPages || null,
         forceRefresh: inventoryForm.forceRefresh,
-      })
+      }, resolveAccountId())
       updateInventoryTask(task)
       const finalTask = await pollTask(task.taskId, updateInventoryTask)
       const payload = finalTask.result || {}
@@ -158,7 +174,7 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
         pageSize: inventoryForm.pageSize,
         maxPages: inventoryForm.maxPages || null,
         forceRefresh: true,
-      })
+      }, resolveAccountId())
       updateInventoryTask(task)
       const finalTask = await pollTask(task.taskId, updateInventoryTask)
       const payload = finalTask.result || {}
@@ -175,35 +191,37 @@ export const useInventory = ({ pollTask, updateInventoryTask }) => {
   }
 
   const changeInventoryPage = async (page) => {
-    loadingInventory.value = true
+    loadingInventoryPage.value = true
     try {
       await loadPersistedInventoryPage(page)
     } catch (error) {
       ElMessage.error(error.message || '翻页失败')
     } finally {
-      loadingInventory.value = false
+      loadingInventoryPage.value = false
     }
   }
 
   const changeInventoryRarity = async (rarity) => {
     inventoryState.rarity = rarity || 'all'
-    loadingInventory.value = true
+    loadingInventoryPage.value = true
     try {
       await loadPersistedInventoryPage(1)
     } catch (error) {
       ElMessage.error(error.message || '筛选库存失败')
     } finally {
-      loadingInventory.value = false
+      loadingInventoryPage.value = false
     }
   }
 
   return {
     loadingInventory,
+    loadingInventoryPage,
     inventoryForm,
     inventoryState,
     inventoryStats,
     inventoryItems,
     inventoryRarityOptions: INVENTORY_RARITY_OPTIONS,
+    resetInventory,
     restorePersistedInventory,
     fetchInventory,
     forceFetchInventory,

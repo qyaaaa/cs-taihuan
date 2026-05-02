@@ -6,7 +6,7 @@ import { optimizeTradeUp, persistNextTierCatalogApi } from '../api/tradeUp'
 const PLAN_TOP_K = 10
 const RARITY_FILTER_OPTIONS = ['consumer', 'industrial', 'mil-spec', 'restricted', 'classified', 'covert']
 
-export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
+export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountId }) => {
   const loadingPlans = ref(false)
   const loadingNextTier = ref(false)
   const loadingCatalog = ref(false)
@@ -61,6 +61,18 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
 
   const selectedPlan = computed(() => sortedPlans.value[selectedPlanIndex.value] || null)
 
+  const resolveAccountId = () => accountId?.value || null
+
+  const resetPlans = () => {
+    selectedPlanIndex.value = 0
+    catalogMissing.value = false
+    planState.plans = []
+    planState.lastAction = '尚未生成方案'
+    planState.nextTierAction = '尚未保存关联档位冗余数据'
+    planState.catalogAction = '尚未同步目录数据'
+    planState.catalogIncomplete = false
+  }
+
   watch(sortedPlans, (plans) => {
     if (selectedPlanIndex.value >= plans.length) {
       selectedPlanIndex.value = 0
@@ -87,7 +99,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
         rarity: planFilters.rarity,
         trackType: planFilters.trackType,
         contractType: planFilters.contractType,
-      })
+      }, resolveAccountId())
       planState.plans = dedupePlans((payload.plans || []).map(normalizePlan))
       planState.lastAction = `已生成 ${planState.plans.length} 条推荐方案`
       selectedPlanIndex.value = 0
@@ -116,7 +128,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     try {
       const task = await createCatalogSyncTask({
         snapshotId: inventoryState.snapshotId,
-      })
+      }, resolveAccountId())
       updateCatalogTask(task)
       const finalTask = await pollTask(task.taskId, updateCatalogTask)
       const payload = finalTask.result || {}
@@ -141,7 +153,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     try {
       const payload = await persistNextTierCatalogApi({
         snapshotId: inventoryState.snapshotId,
-      })
+      }, resolveAccountId())
       planState.nextTierAction = payload.message || `已保存 ${payload.itemCount} 条关联档位冗余数据`
       planState.catalogIncomplete = false
       ElMessage.success(payload.message || `已保存 ${payload.itemCount} 条关联档位冗余数据`)
@@ -174,6 +186,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask }) => {
     planState,
     sortedPlans,
     selectedPlan,
+    resetPlans,
     updatePlanFilter,
     optimizePlans,
     syncCatalog,

@@ -1,5 +1,6 @@
 package com.qyaaaa.cstaihuan.service;
 
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import java.sql.Types;
 import java.util.LinkedHashSet;
@@ -40,7 +41,7 @@ public class CatalogService {
             }
         );
         if (items.isEmpty()) {
-            throw new IllegalArgumentException("Catalog 数据库为空，请先同步 Catalog 数据。");
+            throw new IllegalArgumentException(ErrorMessages.CATALOG_EMPTY);
         }
         log.info("Catalog loaded from database, itemCount={}", Integer.valueOf(items.size()));
         return items;

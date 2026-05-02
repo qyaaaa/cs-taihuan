@@ -1,5 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
+import { useAccounts } from './composables/useAccounts'
 import { useInventory } from './composables/useInventory'
 import { usePlans } from './composables/usePlans'
 import { useSession } from './composables/useSession'
@@ -11,22 +13,30 @@ import PlansPage from './pages/PlansPage.vue'
 import { currency, percent } from './utils/formatters'
 
 const activePage = ref('overview')
+const accountDialogVisible = ref(false)
 
 const taskMonitor = useTaskMonitor()
+const accounts = useAccounts()
+const currentAccountId = computed(() => accounts.accountState.currentAccountId)
+const currentAccount = accounts.currentAccount
 
 const inventory = useInventory({
   pollTask: taskMonitor.pollTask,
   updateInventoryTask: taskMonitor.updateInventoryTask,
+  accountId: currentAccountId,
 })
 
 const plans = usePlans({
   inventoryState: inventory.inventoryState,
   pollTask: taskMonitor.pollTask,
   updateCatalogTask: taskMonitor.updateCatalogTask,
+  accountId: currentAccountId,
 })
 
 const session = useSession({
   restorePersistedInventory: inventory.restorePersistedInventory,
+  accountId: currentAccountId,
+  onAccountUpdated: accounts.loadAccounts,
 })
 
 const pageMeta = computed(() => {
@@ -153,18 +163,15 @@ const planDisabledReason = computed(() => {
 
 const pageLoading = computed(() => {
   if (activePage.value === 'inventory') {
-    return inventory.loadingInventory.value
+    return inventory.loadingInventoryPage.value
   }
   if (activePage.value === 'plans') {
     return plans.loadingPlans.value
   }
   if (activePage.value === 'data') {
     return session.loadingSession.value
-      || inventory.loadingInventory.value
-      || plans.loadingCatalog.value
-      || plans.loadingNextTier.value
   }
-  return session.loadingSession.value || inventory.loadingInventory.value
+  return session.loadingSession.value || inventory.loadingInventoryPage.value
 })
 
 const pageLoadingText = computed(() => {
@@ -174,14 +181,8 @@ const pageLoadingText = computed(() => {
   if (activePage.value === 'inventory') {
     return '正在加载库存数据'
   }
-  if (plans.loadingCatalog.value) {
-    return '正在同步目录数据'
-  }
-  if (plans.loadingNextTier.value) {
-    return '正在保存关联档位数据'
-  }
-  if (inventory.loadingInventory.value) {
-    return '正在处理库存数据'
+  if (inventory.loadingInventoryPage.value) {
+    return '正在加载库存数据'
   }
   if (session.loadingSession.value) {
     return '正在校验 BUFF 会话'
@@ -213,6 +214,61 @@ const openBuffLogin = () => {
   window.open('https://buff.163.com/market/csgo', '_blank', 'noopener,noreferrer')
 }
 
+const refreshCurrentAccountData = async () => {
+  inventory.resetInventory()
+  plans.resetPlans()
+  taskMonitor.resetTasks()
+  await inventory.restorePersistedInventory().catch(() => {})
+  await session.loadSessionStatus()
+}
+
+const handleAccountChange = async (accountId) => {
+  const account = accounts.changeAccount(accountId)
+  if (!account) {
+    return
+  }
+  await refreshCurrentAccountData()
+}
+
+const createAccountAndRefresh = async () => {
+  const account = await accounts.createLocalAccount()
+  if (account) {
+    await refreshCurrentAccountData()
+    session.sessionDialogVisible.value = true
+  }
+}
+
+const saveAccount = async (account) => {
+  const updated = await accounts.updateLocalAccount(account.id, {
+    nickname: account.nickname,
+    buffUserId: account.buffUserId || null,
+  })
+  if (updated) {
+    await refreshCurrentAccountData()
+  }
+}
+
+const deleteManagedAccount = async (account) => {
+  try {
+    await ElMessageBox.confirm(
+      `删除本地账号「${account.nickname}」后，这个账号的会话记录会一起清除。`,
+      '删除账号',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+  } catch (error) {
+    return
+  }
+  const wasCurrent = account.id === accounts.accountState.currentAccountId
+  const deleted = await accounts.deleteLocalAccount(account.id)
+  if (deleted && wasCurrent) {
+    await refreshCurrentAccountData()
+  }
+}
+
 const optimizeFromOverview = () => {
   if (planDisabledReason.value) {
     changePage('data')
@@ -221,9 +277,9 @@ const optimizeFromOverview = () => {
   changePage('plans', { forceGenerate: true })
 }
 
-onMounted(() => {
-  inventory.restorePersistedInventory().catch(() => {})
-  session.loadSessionStatus()
+onMounted(async () => {
+  await accounts.loadAccounts()
+  await refreshCurrentAccountData()
 })
 </script>
 
@@ -231,10 +287,35 @@ onMounted(() => {
   <div class="workspace-shell">
     <aside class="workspace-sidebar">
       <div class="brand-lockup">
-        <span>CT</span>
+        <img src="/app-icon.svg" alt="CSGO 汰换爆赚" />
         <div>
           <strong>CS 汰换</strong>
           <small>汰换工作台</small>
+        </div>
+      </div>
+
+      <div class="account-switcher">
+        <label>当前账号</label>
+        <div class="account-switcher-row">
+          <el-select
+            :model-value="accounts.accountState.currentAccountId"
+            placeholder="选择账号"
+            :loading="accounts.accountState.loading"
+            size="small"
+            @change="handleAccountChange"
+          >
+            <el-option
+              v-for="account in accounts.accountState.accounts"
+              :key="account.id"
+              :label="account.nickname"
+              :value="account.id"
+            >
+              <span>{{ account.nickname }}</span>
+              <small>{{ account.status === 'VALID' ? '已登录' : account.status === 'INVALID' ? '失效' : '未校验' }}</small>
+            </el-option>
+          </el-select>
+          <el-button size="small" plain :loading="accounts.accountState.loading" @click="createAccountAndRefresh">新增</el-button>
+          <el-button size="small" plain @click="accountDialogVisible = true">管理</el-button>
         </div>
       </div>
 
@@ -261,7 +342,7 @@ onMounted(() => {
           <p class="page-description">{{ pageMeta.description }}</p>
         </div>
         <div class="session-compact" :class="{ active: session.sessionState.connected }">
-          <span>{{ session.sessionState.connected ? 'BUFF 已托管' : 'BUFF 未登录' }}</span>
+          <span>{{ currentAccount?.nickname || '默认账号' }} · {{ session.sessionState.connected ? 'BUFF 已托管' : 'BUFF 未登录' }}</span>
           <strong>{{ session.sessionState.maskedCookie || 'No session' }}</strong>
         </div>
       </header>
@@ -280,7 +361,7 @@ onMounted(() => {
 
         <InventoryPage
           v-else-if="activePage === 'inventory'"
-          :loading-inventory="inventory.loadingInventory.value"
+          :loading-inventory="inventory.loadingInventoryPage.value"
           :inventory-state="inventory.inventoryState"
           :inventory-stats="inventory.inventoryStats.value"
           :inventory-items="inventory.inventoryItems.value"
@@ -387,6 +468,40 @@ onMounted(() => {
         <div class="dialog-actions">
           <el-button @click="session.sessionDialogVisible.value = false">取消</el-button>
           <el-button type="primary" :loading="session.loadingSession.value" @click="session.saveSession">保存会话</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="accountDialogVisible"
+      title="账号管理"
+      width="720px"
+      class="account-dialog"
+    >
+      <div class="account-manager">
+        <div
+          v-for="account in accounts.accountState.accounts"
+          :key="account.id"
+          class="account-manager-row"
+        >
+          <div class="account-manager-main">
+            <el-input v-model="account.nickname" maxlength="64" placeholder="账号昵称" />
+            <el-input v-model="account.buffUserId" maxlength="128" placeholder="BUFF 用户 ID（可选）" />
+          </div>
+          <div class="account-manager-meta">
+            <span>{{ account.status === 'VALID' ? '已登录' : account.status === 'INVALID' ? 'Cookie 失效' : '未校验' }}</span>
+            <small>{{ account.maskedCookie || '未导入 Cookie' }}</small>
+          </div>
+          <div class="account-manager-actions">
+            <el-button size="small" type="primary" plain :loading="accounts.accountState.loading" @click="saveAccount(account)">保存</el-button>
+            <el-button size="small" plain :disabled="accounts.accountState.accounts.length <= 1" @click="deleteManagedAccount(account)">删除</el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-actions">
+          <el-button @click="accountDialogVisible = false">关闭</el-button>
+          <el-button type="primary" plain :loading="accounts.accountState.loading" @click="createAccountAndRefresh">新增账号</el-button>
         </div>
       </template>
     </el-dialog>

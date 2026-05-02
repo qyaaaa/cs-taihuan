@@ -19,7 +19,12 @@ public class TradeUpNextTierStoreService {
 
     @Transactional
     public int replaceForSnapshot(long snapshotId, List<NextTierCatalogGroup> groups) {
-        jdbcTemplate.update("DELETE FROM trade_up_next_tier_item WHERE snapshot_id = ?", Long.valueOf(snapshotId));
+        return replaceForSnapshot(1L, snapshotId, groups);
+    }
+
+    @Transactional
+    public int replaceForSnapshot(long accountId, long snapshotId, List<NextTierCatalogGroup> groups) {
+        jdbcTemplate.update("DELETE FROM trade_up_next_tier_item WHERE account_id = ? AND snapshot_id = ?", Long.valueOf(accountId), Long.valueOf(snapshotId));
 
         int total = 0;
         final long now = System.currentTimeMillis();
@@ -29,27 +34,28 @@ public class TradeUpNextTierStoreService {
                 continue;
             }
             total += items.size();
-            batchInsert(snapshotId, now, group, items);
+            batchInsert(accountId, snapshotId, now, group, items);
         }
         return total;
     }
 
-    private void batchInsert(final long snapshotId, final long createdAt, final NextTierCatalogGroup group, final List<CatalogSkin> items) {
+    private void batchInsert(final long accountId, final long snapshotId, final long createdAt, final NextTierCatalogGroup group, final List<CatalogSkin> items) {
         jdbcTemplate.batchUpdate(
-            "INSERT INTO trade_up_next_tier_item (snapshot_id, collection_name, base_rarity, target_rarity, inventory_count, skin_name, skin_price, min_float, max_float, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO trade_up_next_tier_item (account_id, snapshot_id, collection_name, base_rarity, target_rarity, inventory_count, skin_name, skin_price, min_float, max_float, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             new BatchPreparedStatementSetter() {
                 public void setValues(PreparedStatement statement, int index) throws java.sql.SQLException {
                     CatalogSkin skin = items.get(index);
-                    statement.setLong(1, snapshotId);
-                    statement.setString(2, group.getCollection());
-                    statement.setString(3, group.getBaseRarity());
-                    statement.setString(4, group.getTargetRarity());
-                    statement.setInt(5, group.getInventoryCount());
-                    statement.setString(6, skin.getName());
-                    statement.setBigDecimal(7, java.math.BigDecimal.valueOf(skin.getPrice()));
-                    statement.setDouble(8, skin.getMinFloat());
-                    statement.setDouble(9, skin.getMaxFloat());
-                    statement.setLong(10, createdAt);
+                    statement.setLong(1, accountId);
+                    statement.setLong(2, snapshotId);
+                    statement.setString(3, group.getCollection());
+                    statement.setString(4, group.getBaseRarity());
+                    statement.setString(5, group.getTargetRarity());
+                    statement.setInt(6, group.getInventoryCount());
+                    statement.setString(7, skin.getName());
+                    statement.setBigDecimal(8, java.math.BigDecimal.valueOf(skin.getPrice()));
+                    statement.setDouble(9, skin.getMinFloat());
+                    statement.setDouble(10, skin.getMaxFloat());
+                    statement.setLong(11, createdAt);
                 }
 
                 public int getBatchSize() {

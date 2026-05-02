@@ -1,6 +1,8 @@
 package com.qyaaaa.cstaihuan.service;
 
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
+import com.qyaaaa.cstaihuan.model.BuffAccountProfile;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import java.util.ArrayList;
@@ -74,6 +76,40 @@ public class BuffApiClient {
     public boolean validateInventorySession(String baseUrl, String cookie, String game) {
         Map<String, Object> payload = requestInventory(baseUrl, cookie, game, 1, 1);
         return isAuthenticatedInventoryPayload(payload);
+    }
+
+    public BuffAccountProfile fetchAccountProfileFromInventory(String baseUrl, String cookie, String game) {
+        BuffAccountProfile endpointProfile = fetchAccountProfileFromProfileEndpoints(baseUrl, cookie);
+        if (hasProfileIdentity(endpointProfile)) {
+            return endpointProfile;
+        }
+
+        Map<String, Object> payload = requestInventory(baseUrl, cookie, game, 1, 1);
+        if (!isAuthenticatedInventoryPayload(payload)) {
+            return null;
+        }
+        BuffAccountProfile profile = extractAccountProfile(payload);
+        return profile == null ? new BuffAccountProfile() : profile;
+    }
+
+    private BuffAccountProfile fetchAccountProfileFromProfileEndpoints(String baseUrl, String cookie) {
+        String[] paths = new String[] {
+            "/api/account/info",
+            "/api/user/info",
+            "/api/user/profile",
+            "/api/account/steam_profile"
+        };
+        for (String path : paths) {
+            Map<String, Object> payload = requestOptional(baseUrl + path, cookie, baseUrl + "/account");
+            if (payload == null || hasLoginFailureMarker(payload)) {
+                continue;
+            }
+            BuffAccountProfile profile = extractAccountProfile(payload);
+            if (hasProfileIdentity(profile)) {
+                return profile;
+            }
+        }
+        return null;
     }
 
     public Map<String, Object> fetchGoodsDetail(String baseUrl, String cookie, String game, String goodsId) {
@@ -199,21 +235,36 @@ public class BuffApiClient {
             response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
         } catch (HttpClientErrorException.TooManyRequests ex) {
             log.warn("BUFF request rate limited, url={}", url);
-            throw new BuffRateLimitException("BUFF 当前触发限流，请稍后再试。若数据库里已有库存快照，系统会优先回退到最近一次保存的数据。");
+            throw new BuffRateLimitException(ErrorMessages.BUFF_RATE_LIMIT);
         } catch (ResourceAccessException ex) {
             log.warn("BUFF request connection was reset, url={}, message={}", url, ex.getMessage());
-            throw new BuffRateLimitException("BUFF 当前连接被远端重置，通常是请求过快或风控导致。本次已尽量保留已抓到的数据，请稍后继续。");
+            throw new BuffRateLimitException(ErrorMessages.BUFF_CONNECTION_RESET);
         } catch (HttpClientErrorException ex) {
             log.error("BUFF request failed, url={}, status={}", url, ex.getStatusCode());
-            throw new IllegalStateException("BUFF API request failed: " + ex.getStatusCode());
+            throw new IllegalStateException(ErrorMessages.buffApiRequestFailed(ex.getStatusCode()));
         }
         if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
             log.error("BUFF request returned invalid response, url={}, status={}", url, response.getStatusCode());
-            throw new IllegalStateException("BUFF API request failed: " + response.getStatusCode());
+            throw new IllegalStateException(ErrorMessages.buffApiRequestFailed(response.getStatusCode()));
         }
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = response.getBody();
         return payload;
+    }
+
+    private Map<String, Object> requestOptional(String url, String cookie, String referer) {
+        try {
+            return request(url, cookie, referer);
+        } catch (BuffRateLimitException ex) {
+            log.debug("Optional BUFF profile request was rate limited, url={}", url);
+            return null;
+        } catch (HttpClientErrorException ex) {
+            log.debug("Optional BUFF profile request failed, url={}, status={}", url, ex.getStatusCode());
+            return null;
+        } catch (IllegalStateException ex) {
+            log.debug("Optional BUFF profile request returned unusable response, url={}, message={}", url, ex.getMessage());
+            return null;
+        }
     }
 
     private void requireAuthenticatedInventoryPayload(Map<String, Object> payload) {
@@ -221,7 +272,7 @@ public class BuffApiClient {
             Map<String, Object> data = mapValue(payload == null ? null : payload.get("data"));
             log.warn("BUFF inventory payload is not authenticated, keys={}, dataKeys={}",
                 payload == null ? "null" : payload.keySet(), data.keySet());
-            throw new IllegalArgumentException("BUFF 会话已失效或 Cookie 不完整，请重新登录 BUFF 后导入 Cookie。");
+            throw new IllegalArgumentException(ErrorMessages.BUFF_SESSION_INVALID);
         }
     }
 
@@ -244,6 +295,62 @@ public class BuffApiClient {
             || data.containsKey("page_num")
             || data.containsKey("total_page")
             || data.containsKey("total_count");
+    }
+
+    private BuffAccountProfile extractAccountProfile(Map<String, Object> payload) {
+        Map<String, Object> data = mapValue(payload.get("data"));
+        List<Map<String, Object>> candidates = new ArrayList<Map<String, Object>>();
+        collectProfileCandidates(candidates, payload);
+        collectProfileCandidates(candidates, data);
+        candidates.add(payload);
+        candidates.add(data);
+
+        for (Map<String, Object> candidate : candidates) {
+            String nickname = firstNonBlank(
+                stringValue(candidate, "nickname", "nick_name", "user_name", "username", "display_name", "steam_name"),
+                stringValue(mapValue(candidate.get("steam_info")), "nickname", "personaname", "steam_name"),
+                stringValue(mapValue(candidate.get("profile")), "nickname", "user_name", "username", "display_name", "steam_name")
+            );
+            String userId = firstNonBlank(
+                stringValue(candidate, "user_id", "buff_user_id", "uid", "id", "steamid", "steam_id"),
+                stringValue(mapValue(candidate.get("steam_info")), "user_id", "steamid", "steam_id", "id"),
+                stringValue(mapValue(candidate.get("profile")), "user_id", "buff_user_id", "uid", "id", "steamid", "steam_id")
+            );
+            if (nickname != null || userId != null) {
+                BuffAccountProfile profile = new BuffAccountProfile();
+                profile.setNickname(nickname);
+                profile.setBuffUserId(userId);
+                return profile;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasProfileIdentity(BuffAccountProfile profile) {
+        return profile != null && (profile.getNickname() != null || profile.getBuffUserId() != null);
+    }
+
+    private void collectProfileCandidates(List<Map<String, Object>> candidates, Map<String, Object> source) {
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        String[] keys = new String[] {
+            "user",
+            "user_info",
+            "userinfo",
+            "account",
+            "account_info",
+            "profile",
+            "steam_profile",
+            "steam_info",
+            "steam_user_info"
+        };
+        for (String key : keys) {
+            Map<String, Object> candidate = mapValue(source.get(key));
+            if (!candidate.isEmpty()) {
+                candidates.add(candidate);
+            }
+        }
     }
 
     private static boolean hasLoginFailureMarker(Map<String, Object> payload) {
@@ -740,7 +847,7 @@ public class BuffApiClient {
             Thread.sleep(PAGE_REQUEST_INTERVAL_MILLIS);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while waiting to request the next BUFF inventory page.", ex);
+            throw new IllegalStateException(ErrorMessages.BUFF_INVENTORY_PAGE_WAIT_INTERRUPTED, ex);
         }
     }
 }

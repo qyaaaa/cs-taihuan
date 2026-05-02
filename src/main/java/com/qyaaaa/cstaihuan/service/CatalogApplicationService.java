@@ -4,6 +4,7 @@ import com.qyaaaa.cstaihuan.config.BuffProperties;
 import com.qyaaaa.cstaihuan.dto.SyncCatalogRequest;
 import com.qyaaaa.cstaihuan.dto.SyncCatalogResponse;
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import com.qyaaaa.cstaihuan.model.CatalogSyncTaskRecord;
@@ -33,47 +34,60 @@ public class CatalogApplicationService {
     private final BuffApiClient buffApiClient;
     private final BuffProperties buffProperties;
     private final CatalogSyncTaskStoreService catalogSyncTaskStoreService;
+    private final BuffAccountService buffAccountService;
     private final AtomicBoolean catalogSyncRunning = new AtomicBoolean(false);
 
-    public CatalogApplicationService(CatalogService catalogService, InventorySnapshotStoreService inventorySnapshotStoreService, BuffSessionService buffSessionService, BuffApiClient buffApiClient, BuffProperties buffProperties, CatalogSyncTaskStoreService catalogSyncTaskStoreService) {
+    public CatalogApplicationService(CatalogService catalogService, InventorySnapshotStoreService inventorySnapshotStoreService, BuffSessionService buffSessionService, BuffApiClient buffApiClient, BuffProperties buffProperties, CatalogSyncTaskStoreService catalogSyncTaskStoreService, BuffAccountService buffAccountService) {
         this.catalogService = catalogService;
         this.inventorySnapshotStoreService = inventorySnapshotStoreService;
         this.buffSessionService = buffSessionService;
         this.buffApiClient = buffApiClient;
         this.buffProperties = buffProperties;
         this.catalogSyncTaskStoreService = catalogSyncTaskStoreService;
+        this.buffAccountService = buffAccountService;
     }
 
     public SyncCatalogResponse syncCatalog(SyncCatalogRequest request) throws Exception {
-        return syncCatalogWithLock(request, null);
+        return syncCatalog(buffAccountService.resolveDefaultAccountId(), request);
+    }
+
+    public SyncCatalogResponse syncCatalog(long accountId, SyncCatalogRequest request) throws Exception {
+        return syncCatalogWithLock(accountId, request, null);
     }
 
     public SyncCatalogResponse syncCatalogAsync(SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
-        return syncCatalogWithLock(request, progress);
+        return syncCatalogAsync(buffAccountService.resolveDefaultAccountId(), request, progress);
     }
 
-    private SyncCatalogResponse syncCatalogWithLock(SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+    public SyncCatalogResponse syncCatalogAsync(long accountId, SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+        return syncCatalogWithLock(accountId, request, progress);
+    }
+
+    // 手动同步、异步任务和定时任务共用同一把服务级锁，避免同时打 BUFF 详情接口导致限流。
+    private SyncCatalogResponse syncCatalogWithLock(long accountId, SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
         if (!catalogSyncRunning.compareAndSet(false, true)) {
-            throw new IllegalArgumentException("已有目录同步任务正在运行，请等待当前任务完成后再试。");
+            throw new IllegalArgumentException(ErrorMessages.CATALOG_SYNC_ALREADY_RUNNING);
         }
         try {
-            return syncCatalogInternal(request, progress);
+            return syncCatalogInternal(accountId, request, progress);
         } finally {
             catalogSyncRunning.set(false);
         }
     }
 
-    private SyncCatalogResponse syncCatalogInternal(SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
-        InventorySnapshotRecord snapshot = resolveSnapshot(request == null ? null : request.getSnapshotId());
+    // 从库存 goods_id 建立 catalog 同步队列，按缓存新鲜度跳过已获取项，并持续发现关联 goods 扩充产物池。
+    private SyncCatalogResponse syncCatalogInternal(long accountId, SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+        buffAccountService.requireAccount(accountId);
+        InventorySnapshotRecord snapshot = resolveSnapshot(accountId, request == null ? null : request.getSnapshotId());
         List<BuffItem> inventory = inventorySnapshotStoreService.loadItems(snapshot.getId());
         if (inventory.isEmpty()) {
-            throw new IllegalArgumentException("当前库存快照为空，无法生成 Catalog。");
+            throw new IllegalArgumentException(ErrorMessages.CATALOG_SYNC_EMPTY_INVENTORY);
         }
         if (progress != null) {
             progress.update(2, null, null, "已载入库存快照 #" + snapshot.getId() + "，正在准备 Catalog 同步队列。");
         }
 
-        String cookie = buffSessionService.resolveCookie(null);
+        String cookie = buffSessionService.resolveCookie(accountId, null);
         Set<String> seedGoodsIds = new LinkedHashSet<String>();
         Map<String, String> seedCollectionsByGoodsId = new LinkedHashMap<String, String>();
         for (BuffItem item : inventory) {
@@ -86,7 +100,7 @@ public class CatalogApplicationService {
             }
         }
         if (seedGoodsIds.isEmpty()) {
-            throw new IllegalArgumentException("当前库存快照中缺少有效的 goods_id，无法同步 Catalog。");
+            throw new IllegalArgumentException(ErrorMessages.CATALOG_SYNC_MISSING_GOODS_ID);
         }
 
         int maxDetailRequests = resolveMaxDetailRequests(request);
@@ -101,12 +115,12 @@ public class CatalogApplicationService {
             }
         }
 
-        log.info("Catalog sync started, snapshotId={}, seedItemCount={}, seedGoodsCount={}, freshCatalogGoodsCount={}, maxDetailRequests={}, requestIntervalMillis={}, cacheFreshMillis={}",
-            Long.valueOf(snapshot.getId()), Integer.valueOf(inventory.size()), Integer.valueOf(seedGoodsIds.size()), Integer.valueOf(freshGoodsIds.size()),
+        log.info("Catalog sync started, accountId={}, snapshotId={}, seedItemCount={}, seedGoodsCount={}, freshCatalogGoodsCount={}, maxDetailRequests={}, requestIntervalMillis={}, cacheFreshMillis={}",
+            Long.valueOf(accountId), Long.valueOf(snapshot.getId()), Integer.valueOf(inventory.size()), Integer.valueOf(seedGoodsIds.size()), Integer.valueOf(freshGoodsIds.size()),
             detailRequestBudgetLabel(maxDetailRequests), Long.valueOf(requestIntervalMillis), Long.valueOf(cacheFreshMillis));
 
         catalogSyncTaskStoreService.resetProcessing(snapshot.getId());
-        catalogSyncTaskStoreService.enqueue(snapshot.getId(), seedGoodsToSyncByGoodsId);
+        catalogSyncTaskStoreService.enqueue(accountId, snapshot.getId(), seedGoodsToSyncByGoodsId);
         Map<String, CatalogSkin> catalogByIdentity = new LinkedHashMap<String, CatalogSkin>();
         int processedGoodsCount = 0;
         int skippedExistingCount = seedGoodsIds.size() - seedGoodsToSyncByGoodsId.size();
@@ -215,7 +229,7 @@ public class CatalogApplicationService {
                     if (freshGoodsIds.contains(normalizedGoodsId)) {
                         continue;
                     }
-                    catalogSyncTaskStoreService.enqueue(snapshot.getId(), normalizedGoodsId, derivedCollection);
+                    catalogSyncTaskStoreService.enqueue(accountId, snapshot.getId(), normalizedGoodsId, derivedCollection);
                 }
                 catalogSyncTaskStoreService.markSucceeded(task.getId());
             } catch (Exception ex) {
@@ -279,18 +293,18 @@ public class CatalogApplicationService {
         );
     }
 
-    private InventorySnapshotRecord resolveSnapshot(Long snapshotId) {
+    private InventorySnapshotRecord resolveSnapshot(long accountId, Long snapshotId) {
         if (snapshotId != null) {
-            Optional<InventorySnapshotRecord> snapshot = inventorySnapshotStoreService.findById(snapshotId.longValue());
+            Optional<InventorySnapshotRecord> snapshot = inventorySnapshotStoreService.findById(accountId, snapshotId.longValue());
             if (!snapshot.isPresent()) {
-                throw new IllegalArgumentException("Inventory snapshot was not found: " + snapshotId);
+                throw new IllegalArgumentException(ErrorMessages.inventorySnapshotNotFound(snapshotId));
             }
             return snapshot.get();
         }
 
-        Optional<InventorySnapshotRecord> latest = inventorySnapshotStoreService.findLatest(buffProperties.getGame());
+        Optional<InventorySnapshotRecord> latest = inventorySnapshotStoreService.findLatest(accountId, buffProperties.getGame());
         if (!latest.isPresent()) {
-            throw new IllegalArgumentException("No persisted inventory snapshot was found.");
+            throw new IllegalArgumentException(ErrorMessages.NO_PERSISTED_INVENTORY_SNAPSHOT);
         }
         return latest.get();
     }
@@ -348,7 +362,7 @@ public class CatalogApplicationService {
             Thread.sleep(intervalMillis);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Catalog sync was interrupted.", ex);
+            throw new IllegalStateException(ErrorMessages.CATALOG_SYNC_INTERRUPTED, ex);
         }
     }
 

@@ -1,6 +1,7 @@
 package com.qyaaaa.cstaihuan.controller;
 
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,7 @@ public class ApiExceptionHandler {
         List<String> errors = ex.getBindingResult().getFieldErrors().stream()
             .map(this::formatFieldError)
             .collect(Collectors.toList());
-        String message = errors.isEmpty() ? "请求参数校验失败。" : String.join("; ", errors);
+        String message = errors.isEmpty() ? ErrorMessages.VALIDATION_FAILED : String.join("; ", errors);
         log.warn("Validation failed: {}", message);
         Map<String, Object> body = new LinkedHashMap<String, Object>();
         body.put("message", message);
@@ -56,7 +57,7 @@ public class ApiExceptionHandler {
         List<String> errors = ex.getConstraintViolations().stream()
             .map(violation -> violation.getPropertyPath() + " " + violation.getMessage())
             .collect(Collectors.toList());
-        String message = errors.isEmpty() ? "请求参数校验失败。" : String.join("; ", errors);
+        String message = errors.isEmpty() ? ErrorMessages.VALIDATION_FAILED : String.join("; ", errors);
         log.warn("Constraint validation failed: {}", message);
         Map<String, Object> body = new LinkedHashMap<String, Object>();
         body.put("message", message);
@@ -69,7 +70,7 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleInternalError(Exception ex) {
         log.error("Unhandled api error", ex);
         Map<String, Object> body = new LinkedHashMap<String, Object>();
-        body.put("message", "服务器内部错误，请查看后端日志。");
+        body.put("message", ErrorMessages.INTERNAL_API_ERROR);
         body.put("code", "INTERNAL_ERROR");
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }

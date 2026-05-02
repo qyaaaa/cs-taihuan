@@ -30,6 +30,7 @@ public final class TradeUpOptimizer {
         this(catalog, saleFeeRate, outputPriceFactors, null);
     }
 
+    // 预处理 catalog：按基础皮肤名合并不同磨损档位，并按收藏品/品质/暗金状态建立产出池索引。
     public TradeUpOptimizer(List<CatalogSkin> catalog, double saleFeeRate, Map<String, Double> outputPriceFactors, Map<String, List<FloatPriceBand>> outputPriceBands) {
         this.saleFeeRate = saleFeeRate;
         if (outputPriceFactors != null) {
@@ -83,6 +84,7 @@ public final class TradeUpOptimizer {
         }
     }
 
+    // 用 catalog 中的标准收藏品和品质补齐库存数据，避免 BUFF 库存字段缺失导致方案漏算。
     public List<BuffItem> enrichInventory(List<BuffItem> items) {
         List<BuffItem> enriched = new ArrayList<BuffItem>();
         for (BuffItem item : items) {
@@ -100,6 +102,7 @@ public final class TradeUpOptimizer {
         return findBestContracts(items, topK, maxItemsPerRarity, maxCombinations, null, null, null, null);
     }
 
+    // 生成候选合同：先过滤无效素材，再按投入品质和暗金状态分桶，最后枚举每个桶里的可行组合。
     public List<TradeUpPlan> findBestContracts(List<BuffItem> items, int topK, int maxItemsPerRarity, int maxCombinations, String sortBy, String rarityFilter, String trackTypeFilter, String contractTypeFilter) {
         Map<String, List<BuffItem>> byRarity = new HashMap<String, List<BuffItem>>();
         for (BuffItem item : items) {
@@ -148,6 +151,7 @@ public final class TradeUpOptimizer {
         return uniqueTopPlans(candidates, topK);
     }
 
+    // 相同素材组合可能由重复库存行或重复产物数据触发，这里在排序后保留唯一的 topK 方案。
     private static List<TradeUpPlan> uniqueTopPlans(List<TradeUpPlan> candidates, int topK) {
         if (topK <= 0) {
             return new ArrayList<TradeUpPlan>();
@@ -202,6 +206,7 @@ public final class TradeUpOptimizer {
         return "gold".equals(contractTypeFilter) ? goldContract : !goldContract;
     }
 
+    // 统一所有排序入口的兜底顺序，避免主排序字段相等时推荐结果抖动。
     private static Comparator<TradeUpPlan> planComparator(final String sortBy) {
         return new Comparator<TradeUpPlan>() {
             public int compare(TradeUpPlan left, TradeUpPlan right) {
@@ -263,6 +268,7 @@ public final class TradeUpOptimizer {
         return 0;
     }
 
+    // 深度优先枚举合同槽位：常规 10 件，隐秘到金色 5 件，并用 maxCombinations 控制爆炸式组合数。
     private void enumerate(List<BuffItem> shortlist, String rarity, int contractSize, int start, List<BuffItem> current, List<TradeUpPlan> candidates, Set<String> generatedSignatures, int maxCombinations) {
         if (candidates.size() >= maxCombinations) {
             return;
@@ -284,6 +290,7 @@ public final class TradeUpOptimizer {
         }
     }
 
+    // 组合签名只关心投入素材集合，不关心枚举顺序，用来去掉同一合同的排列重复。
     private static String comboSignature(String rarity, List<BuffItem> combo) {
         List<String> inputKeys = new ArrayList<String>();
         for (BuffItem item : combo) {
@@ -297,11 +304,13 @@ public final class TradeUpOptimizer {
         return signature.toString();
     }
 
+    // 素材必须能在 catalog 中找到下一档产物池，否则即使数量够也不能形成有效合同。
     private boolean hasValidOutcomes(BuffItem item) {
         String targetRarity = Rarity.next(contractRarity(item));
         return targetRarity != null && !validOutcomeFamilies(contractCollectionKey(item, targetRarity), targetRarity, isStatTrakItem(item)).isEmpty();
     }
 
+    // 暗金红皮合金只允许进入暗金刀产物池；若某箱只有暗金手套下级，视为无法汰换。
     private boolean isUnavailableStatTrakGoldInput(BuffItem item, String contractRarity) {
         if (!"covert".equals(contractRarity) || !isStatTrakItem(item)) {
             return false;
@@ -317,6 +326,7 @@ public final class TradeUpOptimizer {
         return item.getFilterRarity() != null ? item.getFilterRarity() : item.getRarity();
     }
 
+    // 核心 EV 计算：按投入收藏品占比拆概率，按平均磨损映射产出磨损，再按对应价格档计算税后期望。
     private TradeUpPlan evaluateContract(String rarity, List<BuffItem> combo) {
         double totalCost = 0.0d;
         double totalFloat = 0.0d;
@@ -363,6 +373,7 @@ public final class TradeUpOptimizer {
         return new TradeUpPlan(rarity, round2(totalCost), round2(expectedValue), round2(profit), round4(roi), round6(averageFloat), new ArrayList<BuffItem>(combo), outcomes);
     }
 
+    // 产出池按收藏品/目标品质/暗金状态锁定；暗金金色合同再剔除手套，只保留刀。
     private List<OutputFamily> validOutcomeFamilies(String collection, String targetRarity, boolean statTrakContract) {
         List<OutputFamily> families = outputFamiliesByCollectionRarityAndTrack.get(outputFamilyGroupKey(collection, targetRarity, statTrakContract));
         if (families == null || families.isEmpty()) {
@@ -399,6 +410,7 @@ public final class TradeUpOptimizer {
         return band == null ? skin.getPrice() : band.getPrice();
     }
 
+    // 价格档优先按 goods_id 精确匹配，再回退到完整名称和基础皮肤名，支持二西莫夫这类细分磨损价格。
     private FloatPriceBand outputPriceBand(CatalogSkin skin, double estimatedFloat) {
         if (skin == null || outputPriceBands.isEmpty()) {
             return null;
@@ -455,6 +467,7 @@ public final class TradeUpOptimizer {
             && band.getMaxFloat() <= 1.0d;
     }
 
+    // 产出磨损使用 CS 汰换线性公式，并限制在该皮肤自身 Min/Max Float 区间内。
     private double estimateOutputFloat(double averageInputFloat, double minFloat, double maxFloat) {
         double value = minFloat + averageInputFloat * (maxFloat - minFloat);
         if (value < minFloat) {
@@ -487,6 +500,7 @@ public final class TradeUpOptimizer {
         return "covert".equals(rarity) ? 5 : 10;
     }
 
+    // 金色产物按箱子确定刀/手套池，普通汰换仍按收藏品确定下一档武器池。
     private static String contractCollectionKey(BuffItem item, String targetRarity) {
         if (item == null) {
             return null;
@@ -529,6 +543,7 @@ public final class TradeUpOptimizer {
         return value == null ? "" : value.trim().toLowerCase();
     }
 
+    // 去掉中英文磨损后缀，把同一皮肤的五个磨损档合并成一个产物 family。
     private static String baseSkinName(String name) {
         if (name == null) {
             return "";
@@ -578,6 +593,7 @@ public final class TradeUpOptimizer {
             maxFloat = Math.max(maxFloat, skin.getMaxFloat());
         }
 
+        // 根据计算出的精确磨损选择对应价格档位；没有完全落入区间时用最近档位兜底。
         private CatalogSkin selectVariantForFloat(double floatValue) {
             if (variants.isEmpty()) {
                 return null;
@@ -597,6 +613,7 @@ public final class TradeUpOptimizer {
             return fallback;
         }
 
+        // BUFF/CS 数据里手套分类和名称可能中英文混杂，所以同时检查分类 key 和基础名称。
         private boolean isGloveFamily() {
             String text = normalizeKey(categoryKey) + " " + normalizeKey(name);
             return text.contains("glove")

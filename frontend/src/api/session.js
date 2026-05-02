@@ -1,12 +1,16 @@
 import { postJson, request } from './http'
 
-export const getSessionStatus = () => request('/api/buff/session/status')
+const accountPath = (accountId, path) => accountId
+  ? `/api/accounts/${accountId}/session${path}`
+  : `/api/buff/session${path}`
 
-export const importSession = (cookie) => postJson('/api/buff/session/import', {
+export const getSessionStatus = (accountId = null) => request(accountPath(accountId, '/status'))
+
+export const importSession = (cookie, accountId = null) => postJson(accountPath(accountId, '/import'), {
   cookie,
   source: 'frontend-manual',
 })
 
-export const validateSessionApi = () => postJson('/api/buff/session/validate', {})
+export const validateSessionApi = (accountId = null) => postJson(accountPath(accountId, '/validate'), {})
 
-export const deleteSession = () => request('/api/buff/session', { method: 'DELETE' })
+export const deleteSession = (accountId = null) => request(accountPath(accountId, ''), { method: 'DELETE' })

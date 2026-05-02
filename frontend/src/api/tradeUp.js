@@ -1,5 +1,9 @@
 import { postJson } from './http'
 
-export const optimizeTradeUp = (payload) => postJson('/api/trade-up/optimize', payload)
+const accountPath = (accountId, path) => accountId
+  ? `/api/accounts/${accountId}/trade-up${path}`
+  : `/api/trade-up${path}`
 
-export const persistNextTierCatalogApi = (payload) => postJson('/api/trade-up/next-tier/persist', payload)
+export const optimizeTradeUp = (payload, accountId = null) => postJson(accountPath(accountId, '/optimize'), payload)
+
+export const persistNextTierCatalogApi = (payload, accountId = null) => postJson(accountPath(accountId, '/next-tier/persist'), payload)

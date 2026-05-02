@@ -1,0 +1,28 @@
+{
+  "milSpecToRestricted": {
+    "rarity": "mil-spec",
+    "inputCost": 10.0,
+    "expectedOutputValue": 121.88,
+    "expectedProfit": 111.88,
+    "roi": 11.1875,
+    "averageInputFloat": 0.2,
+    "outcomeCount": 2,
+    "alphaEstimatedFloat": 0.344,
+    "alphaEstimatedSalePrice": 195.0,
+    "betaEstimatedFloat": 0.2,
+    "betaEstimatedSalePrice": 48.75,
+    "probability": 0.5
+  },
+  "statTrakCovertToGold": {
+    "rarity": "covert",
+    "inputCost": 500.0,
+    "expectedOutputValue": 975.0,
+    "expectedProfit": 475.0,
+    "roi": 0.95,
+    "averageInputFloat": 0.2,
+    "outcomeCount": 1,
+    "knifeEstimatedFloat": 0.016,
+    "knifeEstimatedSalePrice": 975.0,
+    "probability": 1.0
+  }
+}

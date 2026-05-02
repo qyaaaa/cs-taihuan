@@ -12,9 +12,10 @@ sequenceDiagram
     participant BUFF as BUFF
     participant DB as MySQL
 
-    User->>FE: 导入 BUFF Cookie
-    FE->>API: 保存会话
-    API->>DB: 保存会话文件/状态
+    User->>FE: 选择或新增 BUFF 账号
+    User->>FE: 导入当前账号 Cookie
+    FE->>API: 保存账号会话
+    API->>DB: 按 account_id 保存会话状态
 
     User->>FE: 点击从 BUFF 获取库存
     FE->>API: 创建库存抓取任务
@@ -24,16 +25,16 @@ sequenceDiagram
         API-->>FE: 当前页数/进度/状态
     end
     API->>BUFF: 分页抓取库存
-    API->>DB: 保存库存快照和武器库存
+    API->>DB: 按 account_id 保存库存快照和武器库存
 
     User->>FE: 点击同步目录数据
     FE->>API: 创建目录同步任务
     API->>BUFF: 分批抓取 goods 详情
-    API->>DB: 保存目录表 catalog_skin
+    API->>DB: 保存全局目录表 catalog_skin
 
     User->>FE: 生成前十方案
-    FE->>API: POST /api/trade-up/optimize
-    API->>DB: 读取库存和目录数据
+    FE->>API: POST /api/accounts/{accountId}/trade-up/optimize
+    API->>DB: 读取当前账号库存和全局目录数据
     API-->>FE: 返回按当前筛选/排序计算的前十方案
 ```
 
@@ -65,6 +66,12 @@ co_flyway_schema_history
 - MySQL 容器或服务是否已启动
 - `src/main/resources/application.yml` 中的地址、账号、密码是否正确
 - 数据库 `cs_taihuan` 是否存在
+
+### 多账号数据边界
+
+- `buff_account`、`buff_session`、`inventory_snapshot`、`catalog_sync_task`、`trade_up_next_tier_item` 按 `account_id` 隔离。
+- `catalog_skin` 是 BUFF 市场目录，跨账号共享，避免重复同步同一批商品数据。
+- 老接口仍可使用，内部默认走第一个账号；新前端会优先使用 `/api/accounts/{accountId}/...`。
 
 ## 2. 启动项目
 

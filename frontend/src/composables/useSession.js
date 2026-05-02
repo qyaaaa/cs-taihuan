@@ -2,7 +2,7 @@ import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { deleteSession, getSessionStatus, importSession, validateSessionApi } from '../api/session'
 
-export const useSession = ({ restorePersistedInventory }) => {
+export const useSession = ({ restorePersistedInventory, accountId, onAccountUpdated }) => {
   const loadingSession = ref(false)
   const sessionDialogVisible = ref(false)
   const sessionForm = reactive({
@@ -29,12 +29,15 @@ export const useSession = ({ restorePersistedInventory }) => {
     sessionState.message = payload?.message || '尚未保存 BUFF 会话。'
   }
 
+  const resolveAccountId = () => accountId?.value || null
+
   const validateSession = async ({ silent = false } = {}) => {
     loadingSession.value = true
     try {
-      const payload = await validateSessionApi()
+      const payload = await validateSessionApi(resolveAccountId())
       normalizeSession(payload)
       if (payload?.valid) {
+        await onAccountUpdated?.()
         await restorePersistedInventory()
       }
       if (!silent) {
@@ -57,7 +60,7 @@ export const useSession = ({ restorePersistedInventory }) => {
   const loadSessionStatus = async () => {
     loadingSession.value = true
     try {
-      const payload = await getSessionStatus()
+      const payload = await getSessionStatus(resolveAccountId())
       normalizeSession(payload)
       if (payload?.connected) {
         loadingSession.value = false
@@ -73,12 +76,13 @@ export const useSession = ({ restorePersistedInventory }) => {
   const saveSession = async () => {
     loadingSession.value = true
     try {
-      const payload = await importSession(sessionForm.cookie)
+      const payload = await importSession(sessionForm.cookie, resolveAccountId())
       normalizeSession(payload)
       sessionDialogVisible.value = false
       sessionForm.cookie = ''
       loadingSession.value = false
       const validated = await validateSession({ silent: true })
+      await onAccountUpdated?.()
       if (validated?.valid) {
         ElMessage.success('BUFF 会话已保存并校验通过')
       } else {
@@ -94,7 +98,8 @@ export const useSession = ({ restorePersistedInventory }) => {
   const clearSession = async () => {
     loadingSession.value = true
     try {
-      await deleteSession()
+      await deleteSession(resolveAccountId())
+      await onAccountUpdated?.()
       normalizeSession({
         connected: false,
         valid: false,

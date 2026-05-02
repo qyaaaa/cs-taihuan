@@ -2,6 +2,7 @@ package com.qyaaaa.cstaihuan.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.InventorySnapshotRecord;
 import com.qyaaaa.cstaihuan.model.InventorySnapshotSummary;
@@ -34,37 +35,32 @@ public class InventorySnapshotStoreService {
     }
 
     public Optional<InventorySnapshotRecord> findLatest(String game) {
+        return findLatest(1L, game);
+    }
+
+    public Optional<InventorySnapshotRecord> findLatest(long accountId, String game) {
         List<InventorySnapshotRecord> records = jdbcTemplate.query(
-            "SELECT id, game, item_count, fingerprint, created_at, last_seen_at FROM inventory_snapshot WHERE game = ? ORDER BY created_at DESC LIMIT 1",
-            new Object[] {game},
-            (rs, rowNum) -> {
-                InventorySnapshotRecord record = new InventorySnapshotRecord();
-                record.setId(rs.getLong("id"));
-                record.setGame(rs.getString("game"));
-                record.setItemCount(rs.getInt("item_count"));
-                record.setFingerprint(rs.getString("fingerprint"));
-                record.setCreatedAt(rs.getLong("created_at"));
-                record.setLastSeenAt(rs.getLong("last_seen_at"));
-                return record;
-            }
+            "SELECT id, account_id, game, item_count, fingerprint, created_at, last_seen_at FROM inventory_snapshot WHERE account_id = ? AND game = ? ORDER BY created_at DESC LIMIT 1",
+            new Object[] {Long.valueOf(accountId), game},
+            (rs, rowNum) -> mapSnapshot(rs)
         );
         return records.isEmpty() ? Optional.<InventorySnapshotRecord>empty() : Optional.of(records.get(0));
     }
 
     public Optional<InventorySnapshotRecord> findById(long snapshotId) {
         List<InventorySnapshotRecord> records = jdbcTemplate.query(
-            "SELECT id, game, item_count, fingerprint, created_at, last_seen_at FROM inventory_snapshot WHERE id = ?",
+            "SELECT id, account_id, game, item_count, fingerprint, created_at, last_seen_at FROM inventory_snapshot WHERE id = ?",
             new Object[] {Long.valueOf(snapshotId)},
-            (rs, rowNum) -> {
-                InventorySnapshotRecord record = new InventorySnapshotRecord();
-                record.setId(rs.getLong("id"));
-                record.setGame(rs.getString("game"));
-                record.setItemCount(rs.getInt("item_count"));
-                record.setFingerprint(rs.getString("fingerprint"));
-                record.setCreatedAt(rs.getLong("created_at"));
-                record.setLastSeenAt(rs.getLong("last_seen_at"));
-                return record;
-            }
+            (rs, rowNum) -> mapSnapshot(rs)
+        );
+        return records.isEmpty() ? Optional.<InventorySnapshotRecord>empty() : Optional.of(records.get(0));
+    }
+
+    public Optional<InventorySnapshotRecord> findById(long accountId, long snapshotId) {
+        List<InventorySnapshotRecord> records = jdbcTemplate.query(
+            "SELECT id, account_id, game, item_count, fingerprint, created_at, last_seen_at FROM inventory_snapshot WHERE account_id = ? AND id = ?",
+            new Object[] {Long.valueOf(accountId), Long.valueOf(snapshotId)},
+            (rs, rowNum) -> mapSnapshot(rs)
         );
         return records.isEmpty() ? Optional.<InventorySnapshotRecord>empty() : Optional.of(records.get(0));
     }
@@ -181,25 +177,31 @@ public class InventorySnapshotStoreService {
 
     @Transactional
     public InventorySnapshotRecord saveSnapshot(String game, String fingerprint, List<BuffItem> items) {
+        return saveSnapshot(1L, game, fingerprint, items);
+    }
+
+    @Transactional
+    public InventorySnapshotRecord saveSnapshot(long accountId, String game, String fingerprint, List<BuffItem> items) {
         final long now = System.currentTimeMillis();
         final KeyHolder keyHolder = new GeneratedKeyHolder();
 
         jdbcTemplate.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO inventory_snapshot (game, item_count, fingerprint, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO inventory_snapshot (account_id, game, item_count, fingerprint, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS
             );
-            statement.setString(1, game);
-            statement.setInt(2, items.size());
-            statement.setString(3, fingerprint);
-            statement.setLong(4, now);
+            statement.setLong(1, accountId);
+            statement.setString(2, game);
+            statement.setInt(3, items.size());
+            statement.setString(4, fingerprint);
             statement.setLong(5, now);
+            statement.setLong(6, now);
             return statement;
         }, keyHolder);
 
         final Number key = keyHolder.getKey();
         if (key == null) {
-            throw new IllegalStateException("Failed to create inventory snapshot.");
+            throw new IllegalStateException(ErrorMessages.CREATE_INVENTORY_SNAPSHOT_FAILED);
         }
         final long snapshotId = key.longValue();
 
@@ -240,6 +242,7 @@ public class InventorySnapshotStoreService {
 
         InventorySnapshotRecord record = new InventorySnapshotRecord();
         record.setId(snapshotId);
+        record.setAccountId(accountId);
         record.setGame(game);
         record.setItemCount(items.size());
         record.setFingerprint(fingerprint);
@@ -259,7 +262,7 @@ public class InventorySnapshotStoreService {
         try {
             return objectMapper.readValue(rawJson, MAP_TYPE);
         } catch (IOException ex) {
-            throw new IllegalStateException("Failed to read persisted raw inventory item.", ex);
+            throw new IllegalStateException(ErrorMessages.READ_RAW_INVENTORY_ITEM_FAILED, ex);
         }
     }
 
@@ -267,7 +270,19 @@ public class InventorySnapshotStoreService {
         try {
             return objectMapper.writeValueAsString(raw == null ? Collections.emptyMap() : raw);
         } catch (IOException ex) {
-            throw new IllegalStateException("Failed to persist raw inventory item.", ex);
+            throw new IllegalStateException(ErrorMessages.PERSIST_RAW_INVENTORY_ITEM_FAILED, ex);
         }
+    }
+
+    private InventorySnapshotRecord mapSnapshot(java.sql.ResultSet rs) throws java.sql.SQLException {
+        InventorySnapshotRecord record = new InventorySnapshotRecord();
+        record.setId(rs.getLong("id"));
+        record.setAccountId(rs.getLong("account_id"));
+        record.setGame(rs.getString("game"));
+        record.setItemCount(rs.getInt("item_count"));
+        record.setFingerprint(rs.getString("fingerprint"));
+        record.setCreatedAt(rs.getLong("created_at"));
+        record.setLastSeenAt(rs.getLong("last_seen_at"));
+        return record;
     }
 }
