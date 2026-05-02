@@ -264,6 +264,9 @@ public class BuffApiClient {
         } catch (IllegalStateException ex) {
             log.debug("Optional BUFF profile request returned unusable response, url={}, message={}", url, ex.getMessage());
             return null;
+        } catch (RuntimeException ex) {
+            log.debug("Optional BUFF profile request could not be parsed, url={}, message={}", url, ex.getMessage());
+            return null;
         }
     }
 
