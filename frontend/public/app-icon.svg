@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CSGO 汰换爆赚">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="48%" r="62%">
+      <stop offset="0%" stop-color="#ffb21b"/>
+      <stop offset="42%" stop-color="#7a1408"/>
+      <stop offset="100%" stop-color="#060609"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff8bd"/>
+      <stop offset="42%" stop-color="#ffc226"/>
+      <stop offset="72%" stop-color="#ff6b00"/>
+      <stop offset="100%" stop-color="#fff07a"/>
+    </linearGradient>
+    <filter id="hotShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#ff7a00" flood-opacity=".9"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".75"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="96" fill="#07080c"/>
+  <circle cx="256" cy="248" r="210" fill="url(#bgGlow)" opacity=".96"/>
+  <path d="M50 115 256 32l206 83-43 274H93L50 115Z" fill="#11131b" stroke="#ff3f14" stroke-width="8"/>
+  <path d="M83 126 256 58l173 68-35 238H118L83 126Z" fill="none" stroke="#ffcc39" stroke-width="4" opacity=".95"/>
+
+  <g opacity=".85" stroke-linecap="round">
+    <path d="M58 64 454 448" stroke="#ff4200" stroke-width="7"/>
+    <path d="M454 64 58 448" stroke="#ff8a00" stroke-width="6"/>
+    <path d="M95 423 416 89" stroke="#ffd13d" stroke-width="3"/>
+    <path d="M256 18v476M18 256h476" stroke="#ffb21b" stroke-width="3" opacity=".35"/>
+  </g>
+
+  <g fill="#ffb51d" opacity=".9">
+    <circle cx="82" cy="92" r="10"/>
+    <circle cx="440" cy="120" r="12"/>
+    <circle cx="72" cy="398" r="14"/>
+    <circle cx="432" cy="406" r="11"/>
+    <circle cx="352" cy="58" r="8"/>
+  </g>
+
+  <g filter="url(#hotShadow)">
+    <text x="256" y="150" text-anchor="middle"
+      font-family="Impact, 'Arial Black', sans-serif" font-size="92" font-weight="900"
+      fill="url(#gold)" stroke="#3b1600" stroke-width="7" paint-order="stroke">CSGO</text>
+    <text x="256" y="265" text-anchor="middle"
+      font-family="'Noto Sans SC', 'Microsoft YaHei', sans-serif" font-size="104" font-weight="900"
+      fill="#fff7d0" stroke="#11131b" stroke-width="12" paint-order="stroke">汰换</text>
+    <text x="256" y="382" text-anchor="middle"
+      font-family="'Noto Sans SC', 'Microsoft YaHei', sans-serif" font-size="116" font-weight="900"
+      fill="url(#gold)" stroke="#8a1300" stroke-width="14" paint-order="stroke">爆赚</text>
+  </g>
+
+  <path d="M80 458h352" stroke="#ff3f14" stroke-width="10" stroke-linecap="round"/>
+</svg>

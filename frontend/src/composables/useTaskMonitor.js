@@ -113,6 +113,15 @@ export const useTaskMonitor = () => {
     recordTaskLog(task, '目录同步任务状态已更新')
   }
 
+  const resetTasks = () => {
+    taskPollers.forEach((timer) => clearTimeout(timer))
+    taskPollers.clear()
+    taskLogKeys.clear()
+    inventoryTask.value = null
+    catalogTask.value = null
+    taskLogs.value = []
+  }
+
   const pollTask = (taskId, assignTask) => {
     if (taskPollers.has(taskId)) {
       clearTimeout(taskPollers.get(taskId))
@@ -162,6 +171,7 @@ export const useTaskMonitor = () => {
     taskStatusLabel,
     updateInventoryTask,
     updateCatalogTask,
+    resetTasks,
     pollTask,
   }
 }

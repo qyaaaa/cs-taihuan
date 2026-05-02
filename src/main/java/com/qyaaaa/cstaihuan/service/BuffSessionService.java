@@ -5,35 +5,45 @@ import com.qyaaaa.cstaihuan.config.BuffProperties;
 import com.qyaaaa.cstaihuan.config.BuffSessionProperties;
 import com.qyaaaa.cstaihuan.dto.BuffSessionImportRequest;
 import com.qyaaaa.cstaihuan.dto.BuffSessionStatusResponse;
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
+import com.qyaaaa.cstaihuan.model.BuffAccountProfile;
 import com.qyaaaa.cstaihuan.model.BuffSessionRecord;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.attribute.PosixFilePermission;
 import java.time.OffsetDateTime;
-import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
-import java.util.Set;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class BuffSessionService {
-    private final BuffSessionProperties buffSessionProperties;
     private final BuffProperties buffProperties;
+    private final BuffSessionProperties buffSessionProperties;
     private final BuffApiClient buffApiClient;
+    private final BuffAccountService buffAccountService;
+    private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
-    public BuffSessionService(BuffSessionProperties buffSessionProperties, BuffProperties buffProperties, BuffApiClient buffApiClient, ObjectMapper objectMapper) {
-        this.buffSessionProperties = buffSessionProperties;
+    public BuffSessionService(BuffProperties buffProperties, BuffSessionProperties buffSessionProperties, BuffApiClient buffApiClient, BuffAccountService buffAccountService, JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.buffProperties = buffProperties;
+        this.buffSessionProperties = buffSessionProperties;
         this.buffApiClient = buffApiClient;
+        this.buffAccountService = buffAccountService;
+        this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
     }
 
     public BuffSessionStatusResponse getStatus() throws IOException {
-        Optional<BuffSessionRecord> record = loadRecord();
+        return getStatus(buffAccountService.resolveDefaultAccountId());
+    }
+
+    public BuffSessionStatusResponse getStatus(long accountId) throws IOException {
+        buffAccountService.requireAccount(accountId);
+        Optional<BuffSessionRecord> record = loadRecord(accountId);
         if (!record.isPresent()) {
             return new BuffSessionStatusResponse(false, false, null, null, null, null, "尚未保存 BUFF 会话。");
         }
@@ -51,88 +61,132 @@ public class BuffSessionService {
     }
 
     public BuffSessionStatusResponse importSession(BuffSessionImportRequest request) throws IOException {
+        return importSession(buffAccountService.resolveDefaultAccountId(), request);
+    }
+
+    public BuffSessionStatusResponse importSession(long accountId, BuffSessionImportRequest request) throws IOException {
+        buffAccountService.requireAccount(accountId);
         if (!StringUtils.hasText(request.getCookie())) {
-            throw new IllegalArgumentException("cookie is required.");
+            throw new IllegalArgumentException(ErrorMessages.COOKIE_REQUIRED);
         }
 
         BuffSessionRecord record = new BuffSessionRecord();
         record.setCookie(request.getCookie().trim());
         record.setSource(StringUtils.hasText(request.getSource()) ? request.getSource().trim() : "frontend");
         record.setUpdatedAt(now());
-        saveRecord(record);
+        saveRecord(accountId, record);
+        buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "UNKNOWN", null);
         return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), null, "会话已保存到后端。");
     }
 
     public BuffSessionStatusResponse validateSession() throws IOException {
-        BuffSessionRecord record = requireRecord();
+        return validateSession(buffAccountService.resolveDefaultAccountId());
+    }
+
+    public BuffSessionStatusResponse validateSession(long accountId) throws IOException {
+        BuffSessionRecord record = requireRecord(accountId);
         try {
-            boolean valid = buffApiClient.validateInventorySession(buffProperties.getBaseUrl(), record.getCookie(), buffProperties.getGame());
-            if (!valid) {
-                return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "会话校验失败，请重新登录 BUFF 后导入最新 Cookie。");
+            BuffAccountProfile profile = buffApiClient.fetchAccountProfileFromInventory(buffProperties.getBaseUrl(), record.getCookie(), buffProperties.getGame());
+            if (profile == null) {
+                buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "INVALID", record.getLastValidatedAt());
+                return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), ErrorMessages.BUFF_SESSION_VALIDATE_FAILED);
             }
             record.setLastValidatedAt(now());
-            saveRecord(record);
+            saveRecord(accountId, record);
+            buffAccountService.updateImportedIdentity(accountId, profile.getNickname(), profile.getBuffUserId());
+            buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "VALID", record.getLastValidatedAt());
             return new BuffSessionStatusResponse(true, true, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "BUFF 会话有效。");
         } catch (RuntimeException ex) {
-            return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "会话校验失败，请重新登录 BUFF 后导入最新 Cookie。");
+            buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "INVALID", record.getLastValidatedAt());
+            return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), ErrorMessages.BUFF_SESSION_VALIDATE_FAILED);
         }
     }
 
     public void clearSession() throws IOException {
-        Files.deleteIfExists(storagePath());
+        clearSession(buffAccountService.resolveDefaultAccountId());
+    }
+
+    public void clearSession(long accountId) throws IOException {
+        buffAccountService.requireAccount(accountId);
+        jdbcTemplate.update("DELETE FROM buff_session WHERE account_id = ?", Long.valueOf(accountId));
+        buffAccountService.updateSessionSummary(accountId, null, "UNKNOWN", null);
     }
 
     public String resolveCookie(String requestCookie) throws IOException {
+        return resolveCookie(buffAccountService.resolveDefaultAccountId(), requestCookie);
+    }
+
+    public String resolveCookie(long accountId, String requestCookie) throws IOException {
+        buffAccountService.requireAccount(accountId);
         if (StringUtils.hasText(requestCookie)) {
             return requestCookie.trim();
         }
-        Optional<BuffSessionRecord> record = loadRecord();
+        Optional<BuffSessionRecord> record = loadRecord(accountId);
         if (record.isPresent() && StringUtils.hasText(record.get().getCookie())) {
             return record.get().getCookie().trim();
         }
-        throw new IllegalArgumentException("BUFF cookie is missing. Please import a session from the frontend first.");
+        throw new IllegalArgumentException(ErrorMessages.BUFF_COOKIE_MISSING);
     }
 
-    private Optional<BuffSessionRecord> loadRecord() throws IOException {
-        Path path = storagePath();
-        if (!Files.exists(path)) {
-            return Optional.empty();
+    private Optional<BuffSessionRecord> loadRecord(long accountId) throws IOException {
+        List<BuffSessionRecord> rows = jdbcTemplate.query(
+            "SELECT cookie_text, source, updated_at, last_validated_at FROM buff_session WHERE account_id = ?",
+            (rs, rowNum) -> {
+                BuffSessionRecord record = new BuffSessionRecord();
+                record.setCookie(rs.getString("cookie_text"));
+                record.setSource(rs.getString("source"));
+                record.setUpdatedAt(rs.getString("updated_at"));
+                record.setLastValidatedAt(rs.getString("last_validated_at"));
+                return record;
+            },
+            Long.valueOf(accountId)
+        );
+        if (!rows.isEmpty()) {
+            return Optional.of(rows.get(0));
         }
-        return Optional.of(objectMapper.readValue(path.toFile(), BuffSessionRecord.class));
+        return migrateLegacyDefaultSession(accountId);
     }
 
-    private BuffSessionRecord requireRecord() throws IOException {
-        Optional<BuffSessionRecord> record = loadRecord();
+    private BuffSessionRecord requireRecord(long accountId) throws IOException {
+        Optional<BuffSessionRecord> record = loadRecord(accountId);
         if (!record.isPresent()) {
-            throw new IllegalArgumentException("No BUFF session has been saved.");
+            throw new IllegalArgumentException(ErrorMessages.NO_BUFF_SESSION_SAVED);
         }
         return record.get();
     }
 
-    private void saveRecord(BuffSessionRecord record) throws IOException {
-        Path path = storagePath();
-        Path parent = path.toAbsolutePath().getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), record);
-        restrictOwnerAccess(path);
+    private void saveRecord(long accountId, BuffSessionRecord record) throws IOException {
+        String createdAt = record.getUpdatedAt() == null ? now() : record.getUpdatedAt();
+        jdbcTemplate.update(
+            "INSERT INTO buff_session (account_id, cookie_text, source, created_at, updated_at, last_validated_at) VALUES (?, ?, ?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE cookie_text = VALUES(cookie_text), source = VALUES(source), updated_at = VALUES(updated_at), last_validated_at = VALUES(last_validated_at)",
+            Long.valueOf(accountId),
+            record.getCookie(),
+            record.getSource(),
+            createdAt,
+            record.getUpdatedAt(),
+            record.getLastValidatedAt()
+        );
     }
 
-    private void restrictOwnerAccess(Path path) throws IOException {
-        try {
-            Set<PosixFilePermission> permissions = EnumSet.of(
-                PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE
-            );
-            Files.setPosixFilePermissions(path, permissions);
-        } catch (UnsupportedOperationException ignored) {
-            // Non-POSIX file systems do not expose chmod-style permissions.
+    private Optional<BuffSessionRecord> migrateLegacyDefaultSession(long accountId) throws IOException {
+        if (accountId != buffAccountService.resolveDefaultAccountId()) {
+            return Optional.empty();
         }
-    }
-
-    private Path storagePath() {
-        return Paths.get(buffSessionProperties.getStoragePath());
+        Path path = Paths.get(buffSessionProperties.getStoragePath());
+        if (!Files.exists(path)) {
+            return Optional.empty();
+        }
+        BuffSessionRecord record = objectMapper.readValue(path.toFile(), BuffSessionRecord.class);
+        if (!StringUtils.hasText(record.getCookie())) {
+            return Optional.empty();
+        }
+        if (!StringUtils.hasText(record.getUpdatedAt())) {
+            record.setUpdatedAt(now());
+        }
+        saveRecord(accountId, record);
+        buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "UNKNOWN", record.getLastValidatedAt());
+        return Optional.of(record);
     }
 
     private String now() {

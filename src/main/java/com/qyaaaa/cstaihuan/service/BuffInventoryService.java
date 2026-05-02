@@ -7,6 +7,7 @@ import com.qyaaaa.cstaihuan.dto.InventoryPageResponse;
 import com.qyaaaa.cstaihuan.dto.InventorySnapshotRequest;
 import com.qyaaaa.cstaihuan.dto.InventorySnapshotResponse;
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.InventorySnapshotRecord;
 import com.qyaaaa.cstaihuan.model.InventorySnapshotSummary;
@@ -37,52 +38,71 @@ public class BuffInventoryService {
     private final BuffApiClient buffApiClient;
     private final InventoryFileService inventoryFileService;
     private final BuffSessionService buffSessionService;
+    private final BuffAccountService buffAccountService;
     private final InventorySnapshotStoreService inventorySnapshotStoreService;
 
-    public BuffInventoryService(BuffProperties buffProperties, BuffApiClient buffApiClient, InventoryFileService inventoryFileService, BuffSessionService buffSessionService, InventorySnapshotStoreService inventorySnapshotStoreService) {
+    public BuffInventoryService(BuffProperties buffProperties, BuffApiClient buffApiClient, InventoryFileService inventoryFileService, BuffSessionService buffSessionService, BuffAccountService buffAccountService, InventorySnapshotStoreService inventorySnapshotStoreService) {
         this.buffProperties = buffProperties;
         this.buffApiClient = buffApiClient;
         this.inventoryFileService = inventoryFileService;
         this.buffSessionService = buffSessionService;
+        this.buffAccountService = buffAccountService;
         this.inventorySnapshotStoreService = inventorySnapshotStoreService;
     }
 
     public InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request) throws Exception {
-        return fetchAndSave(request, false, null);
+        return fetchAndSave(buffAccountService.resolveDefaultAccountId(), request, false, null);
+    }
+
+    public InventorySnapshotResponse fetchAndSave(long accountId, FetchInventoryRequest request) throws Exception {
+        return fetchAndSave(accountId, request, false, null);
     }
 
     public InventorySnapshotResponse forceUpdate(FetchInventoryRequest request) throws Exception {
-        return fetchAndSave(request, true, null);
+        return fetchAndSave(buffAccountService.resolveDefaultAccountId(), request, true, null);
+    }
+
+    public InventorySnapshotResponse forceUpdate(long accountId, FetchInventoryRequest request) throws Exception {
+        return fetchAndSave(accountId, request, true, null);
     }
 
     public InventorySnapshotResponse fetchAndSaveAsync(FetchInventoryRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
-        return fetchAndSave(request, false, progress);
+        return fetchAndSave(buffAccountService.resolveDefaultAccountId(), request, false, progress);
+    }
+
+    public InventorySnapshotResponse fetchAndSaveAsync(long accountId, FetchInventoryRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+        return fetchAndSave(accountId, request, false, progress);
     }
 
     public InventorySnapshotResponse forceUpdateAsync(FetchInventoryRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
-        return fetchAndSave(request, true, progress);
+        return fetchAndSave(buffAccountService.resolveDefaultAccountId(), request, true, progress);
     }
 
-    private InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request, boolean forceUpdate, AsyncTaskService.TaskProgress progress) throws Exception {
+    public InventorySnapshotResponse forceUpdateAsync(long accountId, FetchInventoryRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
+        return fetchAndSave(accountId, request, true, progress);
+    }
+
+    private InventorySnapshotResponse fetchAndSave(long accountId, FetchInventoryRequest request, boolean forceUpdate, AsyncTaskService.TaskProgress progress) throws Exception {
+        buffAccountService.requireAccount(accountId);
         String outputPath = request.getOutputPath();
         if (!StringUtils.hasText(outputPath)) {
-            throw new IllegalArgumentException("outputPath is required.");
+            throw new IllegalArgumentException(ErrorMessages.OUTPUT_PATH_REQUIRED);
         }
 
         // 先解析这次请求实际要使用的登录态，优先复用后端托管的会话。
-        String cookie = buffSessionService.resolveCookie(request.getCookie());
+        String cookie = buffSessionService.resolveCookie(accountId, request.getCookie());
 
         String game = StringUtils.hasText(request.getGame()) ? request.getGame() : buffProperties.getGame();
         int pageSize = request.getPageSize() == null ? buffProperties.getPageSize() : request.getPageSize().intValue();
         Integer maxPages = request.getMaxPages();
         Path path = Paths.get(outputPath);
-        Optional<InventorySnapshotRecord> latest = inventorySnapshotStoreService.findLatest(game);
+        Optional<InventorySnapshotRecord> latest = inventorySnapshotStoreService.findLatest(accountId, game);
 
         boolean forceRefresh = (forceUpdate || request.getForceRefresh() == null)
             ? true
             : request.getForceRefresh().booleanValue();
-        log.info("Fetch inventory started, game={}, outputPath={}, pageSize={}, maxPages={}, forceRefresh={}, latestSnapshotId={}",
-            game, path, Integer.valueOf(pageSize), maxPages, Boolean.valueOf(forceRefresh),
+        log.info("Fetch inventory started, accountId={}, game={}, outputPath={}, pageSize={}, maxPages={}, forceRefresh={}, latestSnapshotId={}",
+            Long.valueOf(accountId), game, path, Integer.valueOf(pageSize), maxPages, Boolean.valueOf(forceRefresh),
             latest.isPresent() ? Long.valueOf(latest.get().getId()) : null);
         if (progress != null) {
             progress.update(2, null, maxPages, "库存抓取任务已创建，正在解析 BUFF 会话。");
@@ -152,7 +172,7 @@ public class BuffInventoryService {
         if (progress != null) {
             progress.update(96, Integer.valueOf(persistedItems.size()), Integer.valueOf(items.size()), "正在写入数据库快照和本地 JSON。");
         }
-        InventorySnapshotRecord saved = inventorySnapshotStoreService.saveSnapshot(game, fingerprint, persistedItems);
+        InventorySnapshotRecord saved = inventorySnapshotStoreService.saveSnapshot(accountId, game, fingerprint, persistedItems);
         // 文件落完整库存，数据库只落筛选后的武器类物品，两个出口各自服务不同用途。
         inventoryFileService.save(path, items);
         log.info("Fetch inventory saved new snapshot, snapshotId={}, persistedItemCount={}, forceUpdate={}",
@@ -166,7 +186,7 @@ public class BuffInventoryService {
 
     public InventorySnapshotResponse loadFromFile(InventorySnapshotRequest request) throws Exception {
         if (!StringUtils.hasText(request.getInventoryPath())) {
-            throw new IllegalArgumentException("inventoryPath is required.");
+            throw new IllegalArgumentException(ErrorMessages.INVENTORY_PATH_REQUIRED);
         }
 
         Path path = Paths.get(request.getInventoryPath());
@@ -176,8 +196,13 @@ public class BuffInventoryService {
     }
 
     public InventoryPageResponse loadPage(InventoryPageRequest request) {
+        return loadPage(buffAccountService.resolveDefaultAccountId(), request);
+    }
+
+    public InventoryPageResponse loadPage(long accountId, InventoryPageRequest request) {
+        buffAccountService.requireAccount(accountId);
         String game = StringUtils.hasText(request.getGame()) ? request.getGame() : buffProperties.getGame();
-        InventorySnapshotRecord snapshot = resolveSnapshot(request.getSnapshotId(), game);
+        InventorySnapshotRecord snapshot = resolveSnapshot(accountId, request.getSnapshotId(), game);
         int page = request.getPage() == null || request.getPage().intValue() < 1 ? 1 : request.getPage().intValue();
         int pageSize = request.getPageSize() == null || request.getPageSize().intValue() < 1 ? 50 : request.getPageSize().intValue();
         String rarity = normalizeRarityFilter(request.getRarity());
@@ -257,7 +282,7 @@ public class BuffInventoryService {
             }
             return hex.toString();
         } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is unavailable.", ex);
+            throw new IllegalStateException(ErrorMessages.SHA_256_UNAVAILABLE, ex);
         }
     }
 
@@ -285,17 +310,17 @@ public class BuffInventoryService {
             && item.getCategoryKey().startsWith("weapon_");
     }
 
-    private InventorySnapshotRecord resolveSnapshot(Long snapshotId, String game) {
+    private InventorySnapshotRecord resolveSnapshot(long accountId, Long snapshotId, String game) {
         if (snapshotId != null) {
-            Optional<InventorySnapshotRecord> snapshot = inventorySnapshotStoreService.findById(snapshotId.longValue());
+            Optional<InventorySnapshotRecord> snapshot = inventorySnapshotStoreService.findById(accountId, snapshotId.longValue());
             if (!snapshot.isPresent()) {
-                throw new IllegalArgumentException("Inventory snapshot was not found: " + snapshotId);
+                throw new IllegalArgumentException(ErrorMessages.inventorySnapshotNotFound(snapshotId));
             }
             return snapshot.get();
         }
-        Optional<InventorySnapshotRecord> latest = inventorySnapshotStoreService.findLatest(game);
+        Optional<InventorySnapshotRecord> latest = inventorySnapshotStoreService.findLatest(accountId, game);
         if (!latest.isPresent()) {
-            throw new IllegalArgumentException("No persisted inventory snapshot was found.");
+            throw new IllegalArgumentException(ErrorMessages.NO_PERSISTED_INVENTORY_SNAPSHOT);
         }
         return latest.get();
     }

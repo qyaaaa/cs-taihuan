@@ -3,6 +3,7 @@ package com.qyaaaa.cstaihuan.service;
 import com.qyaaaa.cstaihuan.config.BuffProperties;
 import com.qyaaaa.cstaihuan.dto.SyncCatalogRequest;
 import com.qyaaaa.cstaihuan.dto.SyncCatalogResponse;
+import com.qyaaaa.cstaihuan.model.BuffAccount;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,17 +16,20 @@ public class CatalogSyncScheduler {
 
     private final CatalogApplicationService catalogApplicationService;
     private final BuffProperties buffProperties;
+    private final BuffAccountService buffAccountService;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public CatalogSyncScheduler(CatalogApplicationService catalogApplicationService, BuffProperties buffProperties) {
+    public CatalogSyncScheduler(CatalogApplicationService catalogApplicationService, BuffProperties buffProperties, BuffAccountService buffAccountService) {
         this.catalogApplicationService = catalogApplicationService;
         this.buffProperties = buffProperties;
+        this.buffAccountService = buffAccountService;
     }
 
     @Scheduled(
         initialDelayString = "${buff.catalog-sync.scheduled-initial-delay-millis:60000}",
         fixedDelayString = "${buff.catalog-sync.scheduled-fixed-delay-millis:900000}"
     )
+    // 后台温和补齐最新库存快照的 catalog：限制单次请求量，真正的并发互斥由 CatalogApplicationService 兜底。
     public void syncLatestSnapshotCatalog() {
         BuffProperties.CatalogSync catalogSync = buffProperties.getCatalogSync();
         if (catalogSync == null || !catalogSync.isScheduledEnabled()) {
@@ -41,13 +45,20 @@ public class CatalogSyncScheduler {
             if (maxDetailRequests > 0) {
                 request.setMaxDetailRequests(Integer.valueOf(maxDetailRequests));
             }
-            SyncCatalogResponse response = catalogApplicationService.syncCatalog(request);
-            log.info("Scheduled catalog sync finished, snapshotId={}, processedGoodsCount={}, remainingGoodsCount={}, partial={}, message={}",
-                response.getSnapshotId(),
-                Integer.valueOf(response.getProcessedGoodsCount()),
-                Integer.valueOf(response.getRemainingGoodsCount()),
-                Boolean.valueOf(response.isPartial()),
-                response.getMessage());
+            for (BuffAccount account : buffAccountService.listAccounts()) {
+                try {
+                    SyncCatalogResponse response = catalogApplicationService.syncCatalog(account.getId(), request);
+                    log.info("Scheduled catalog sync finished, accountId={}, snapshotId={}, processedGoodsCount={}, remainingGoodsCount={}, partial={}, message={}",
+                        Long.valueOf(account.getId()),
+                        response.getSnapshotId(),
+                        Integer.valueOf(response.getProcessedGoodsCount()),
+                        Integer.valueOf(response.getRemainingGoodsCount()),
+                        Boolean.valueOf(response.isPartial()),
+                        response.getMessage());
+                } catch (IllegalArgumentException ex) {
+                    log.info("Scheduled catalog sync skipped for accountId={}: {}", Long.valueOf(account.getId()), ex.getMessage());
+                }
+            }
         } catch (IllegalArgumentException ex) {
             log.info("Scheduled catalog sync skipped: {}", ex.getMessage());
         } catch (Exception ex) {

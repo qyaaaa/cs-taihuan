@@ -116,11 +116,20 @@ flowchart LR
 - `库存`：读取数据库中最近一次保存的武器库存，支持分页。
 - `方案`：生成并查看前十推荐方案，支持按 EV、利润、ROI、投入成本、档位和合成类型筛选排序。
 - `数据`：导入 BUFF 会话、抓取库存、强制刷新、同步目录数据、查看任务日志。
+- `账号切换`：侧边栏可维护多个 BUFF 账号；Cookie、库存快照和方案按账号隔离，`catalog_skin` 市场目录全局共享。
 
 ## 常用接口
 
 会话：
 
+- `GET /api/accounts`
+- `POST /api/accounts`
+- `PUT /api/accounts/{accountId}`
+- `DELETE /api/accounts/{accountId}`
+- `GET /api/accounts/{accountId}/session/status`
+- `POST /api/accounts/{accountId}/session/import`
+- `POST /api/accounts/{accountId}/session/validate`
+- `DELETE /api/accounts/{accountId}/session`
 - `GET /api/buff/session/status`
 - `POST /api/buff/session/import`
 - `POST /api/buff/session/validate`
@@ -129,12 +138,18 @@ flowchart LR
 异步任务：
 
 - `GET /api/tasks/{taskId}`
+- `POST /api/accounts/{accountId}/inventory/fetch/task`
+- `POST /api/accounts/{accountId}/inventory/fetch/force/task`
+- `POST /api/accounts/{accountId}/catalog/sync/task`
 - `POST /api/buff/inventory/fetch/task`
 - `POST /api/buff/inventory/fetch/force/task`
 - `POST /api/catalog/sync/task`
 
 库存和方案：
 
+- `POST /api/accounts/{accountId}/inventory/page`
+- `POST /api/accounts/{accountId}/trade-up/next-tier/persist`
+- `POST /api/accounts/{accountId}/trade-up/optimize`
 - `POST /api/buff/inventory/page`
 - `POST /api/trade-up/next-tier/persist`
 - `POST /api/trade-up/optimize`

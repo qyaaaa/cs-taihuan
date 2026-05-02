@@ -2,6 +2,7 @@ package com.qyaaaa.cstaihuan.service;
 
 import com.qyaaaa.cstaihuan.dto.AsyncTaskResponse;
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
+import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -40,7 +41,7 @@ public class AsyncTaskService {
     public AsyncTaskResponse find(String taskId) {
         AsyncTaskRecord record = tasks.get(taskId);
         if (record == null) {
-            throw new IllegalArgumentException("Async task was not found: " + taskId);
+            throw new IllegalArgumentException(ErrorMessages.asyncTaskNotFound(taskId));
         }
         return record.toResponse();
     }
@@ -61,7 +62,7 @@ public class AsyncTaskService {
             record.failed("BAD_REQUEST", ex.getMessage(), false);
         } catch (Exception ex) {
             log.error("Async task failed, taskId={}, type={}", record.taskId, record.type, ex);
-            record.failed("INTERNAL_ERROR", "任务执行失败，请查看后端日志。", false);
+            record.failed("INTERNAL_ERROR", ErrorMessages.INTERNAL_TASK_ERROR, false);
         }
     }
 

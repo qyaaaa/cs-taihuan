@@ -1,0 +1,46 @@
+[
+  {
+    "goods_id": "out-alpha-ft",
+    "name": "Fixture Rifle | Output Alpha (Field-Tested)",
+    "collection": "Fixture Collection",
+    "rarity": "restricted",
+    "category_key": "weapon_rifle",
+    "quality_label": "Restricted",
+    "min_float": 0.18,
+    "max_float": 1.0,
+    "price": 90.0
+  },
+  {
+    "goods_id": "out-beta-ft",
+    "name": "Fixture Rifle | Output Beta (Field-Tested)",
+    "collection": "Fixture Collection",
+    "rarity": "restricted",
+    "category_key": "weapon_rifle",
+    "quality_label": "Restricted",
+    "min_float": 0.0,
+    "max_float": 1.0,
+    "price": 50.0
+  },
+  {
+    "goods_id": "out-stattrak-knife-fn",
+    "name": "\u2605 StatTrak\u2122 Fixture Knife | Doppler (Factory New)",
+    "collection": "Fixture Case",
+    "rarity": "gold",
+    "category_key": "weapon_knife",
+    "quality_label": "Covert",
+    "min_float": 0.0,
+    "max_float": 0.08,
+    "price": 1000.0
+  },
+  {
+    "goods_id": "out-stattrak-gloves-ft",
+    "name": "\u2605 StatTrak\u2122 Fixture Gloves | Fade (Field-Tested)",
+    "collection": "Fixture Case",
+    "rarity": "gold",
+    "category_key": "type_gloves",
+    "quality_label": "Covert",
+    "min_float": 0.06,
+    "max_float": 0.8,
+    "price": 10.0
+  }
+]

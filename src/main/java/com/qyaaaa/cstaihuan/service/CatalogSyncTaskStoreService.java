@@ -26,30 +26,40 @@ public class CatalogSyncTaskStoreService {
 
     @Transactional
     public int enqueue(long snapshotId, Map<String, String> collectionsByGoodsId) {
+        return enqueue(1L, snapshotId, collectionsByGoodsId);
+    }
+
+    @Transactional
+    public int enqueue(long accountId, long snapshotId, Map<String, String> collectionsByGoodsId) {
         if (collectionsByGoodsId == null || collectionsByGoodsId.isEmpty()) {
             return 0;
         }
         int changed = 0;
         for (Map.Entry<String, String> entry : collectionsByGoodsId.entrySet()) {
-            changed += enqueue(snapshotId, entry.getKey(), entry.getValue());
+            changed += enqueue(accountId, snapshotId, entry.getKey(), entry.getValue());
         }
         return changed;
     }
 
     public int enqueue(long snapshotId, String goodsId, String collection) {
+        return enqueue(1L, snapshotId, goodsId, collection);
+    }
+
+    public int enqueue(long accountId, long snapshotId, String goodsId, String collection) {
         String normalizedGoodsId = normalizeGoodsId(goodsId);
         if (normalizedGoodsId.isEmpty()) {
             return 0;
         }
         long now = System.currentTimeMillis();
         return jdbcTemplate.update(
-            "INSERT INTO catalog_sync_task (snapshot_id, goods_id, collection_name, status, retry_count, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, 0, ?, ?) " +
+            "INSERT INTO catalog_sync_task (account_id, snapshot_id, goods_id, collection_name, status, retry_count, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, 0, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE " +
                 "collection_name = COALESCE(NULLIF(VALUES(collection_name), ''), collection_name), " +
                 "status = CASE WHEN status = 'PROCESSING' THEN status ELSE 'PENDING' END, " +
                 "failure_reason = NULL, " +
                 "updated_at = VALUES(updated_at)",
+            Long.valueOf(accountId),
             Long.valueOf(snapshotId),
             normalizedGoodsId,
             normalizeCollection(collection),
@@ -74,7 +84,7 @@ public class CatalogSyncTaskStoreService {
     @Transactional
     public Optional<CatalogSyncTaskRecord> claimNext(long snapshotId) {
         List<CatalogSyncTaskRecord> rows = jdbcTemplate.query(
-            "SELECT id, snapshot_id, goods_id, collection_name, status, failure_reason, retry_count, last_attempt_at, created_at, updated_at " +
+            "SELECT id, account_id, snapshot_id, goods_id, collection_name, status, failure_reason, retry_count, last_attempt_at, created_at, updated_at " +
                 "FROM catalog_sync_task " +
                 "WHERE snapshot_id = ? " +
                 "AND (status = ? OR (status = ? AND retry_count < ?)) " +
@@ -171,6 +181,7 @@ public class CatalogSyncTaskStoreService {
     private CatalogSyncTaskRecord mapRecord(java.sql.ResultSet rs) throws java.sql.SQLException {
         CatalogSyncTaskRecord record = new CatalogSyncTaskRecord();
         record.setId(rs.getLong("id"));
+        record.setAccountId(rs.getLong("account_id"));
         record.setSnapshotId(rs.getLong("snapshot_id"));
         record.setGoodsId(rs.getString("goods_id"));
         record.setCollection(rs.getString("collection_name"));
