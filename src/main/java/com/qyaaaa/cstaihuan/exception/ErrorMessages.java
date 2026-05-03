@@ -73,6 +73,10 @@ public final class ErrorMessages {
         return "目录同步尚未完成，当前快照还有 " + remainingCount + " 个 goods 待处理。请继续点击“从 BUFF 同步目录数据”，直到剩余为 0 后再生成方案。";
     }
 
+    public static String catalogSyncIncompleteWarning(int remainingCount) {
+        return "目录仍在补齐，当前快照还有 " + remainingCount + " 个 goods 待处理；本次已用现有 catalog 生成方案，EV 可能不完整。";
+    }
+
     public static String buffApiRequestFailed(Object status) {
         return BUFF_API_REQUEST_FAILED_PREFIX + status;
     }

@@ -155,9 +155,6 @@ const catalogMissingReason = computed(() => {
 })
 
 const planDisabledReason = computed(() => {
-  if (plans.planState.catalogIncomplete) {
-    return '目录同步尚未完成，请继续点击“从 BUFF 同步目录数据”，直到剩余待处理 goods 为 0。'
-  }
   return snapshotRequiredReason.value || catalogMissingReason.value
 })
 
