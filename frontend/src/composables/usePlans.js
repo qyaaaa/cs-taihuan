@@ -101,11 +101,15 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
         contractType: planFilters.contractType,
       }, resolveAccountId())
       planState.plans = dedupePlans((payload.plans || []).map(normalizePlan))
-      planState.lastAction = `已生成 ${planState.plans.length} 条推荐方案`
+      planState.catalogIncomplete = Boolean(payload.catalogIncomplete)
+      planState.lastAction = payload.message || `已生成 ${planState.plans.length} 条推荐方案`
       selectedPlanIndex.value = 0
       catalogMissing.value = false
-      planState.catalogIncomplete = false
-      ElMessage.success(`完成方案计算，共 ${planState.plans.length} 条`)
+      if (planState.catalogIncomplete) {
+        ElMessage.warning(payload.message || `已生成 ${planState.plans.length} 条方案，目录仍在补齐`)
+      } else {
+        ElMessage.success(`完成方案计算，共 ${planState.plans.length} 条`)
+      }
     } catch (error) {
       const message = String(error.message || '生成方案失败')
       if (message.includes('Catalog 数据库为空')) {

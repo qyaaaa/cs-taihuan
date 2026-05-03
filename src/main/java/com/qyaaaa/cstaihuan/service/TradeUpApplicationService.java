@@ -61,7 +61,7 @@ public class TradeUpApplicationService {
     public OptimizeTradeUpResponse optimize(long accountId, OptimizeTradeUpRequest request) throws Exception {
         buffAccountService.requireAccount(accountId);
         InventorySnapshotRecord snapshot = resolveSnapshot(accountId, request.getSnapshotId());
-        assertCatalogSyncComplete(snapshot.getId());
+        CatalogSyncWarning catalogWarning = catalogSyncWarning(snapshot.getId());
         List<BuffItem> inventory = inventorySnapshotStoreService.loadItems(snapshot.getId());
         List<CatalogSkin> catalog = catalogService.loadAll();
 
@@ -84,7 +84,12 @@ public class TradeUpApplicationService {
                 request.getTrackType(),
                 request.getContractType()
             );
-        return new OptimizeTradeUpResponse(plans);
+        return new OptimizeTradeUpResponse(
+            plans,
+            catalogWarning.isIncomplete(),
+            catalogWarning.getRemainingGoodsCount(),
+            catalogWarning.getMessage()
+        );
     }
 
     // 前端选择“全部”时仍要保留每个档位的候选方案，方便进入页面后再按档位筛选。
@@ -226,12 +231,45 @@ public class TradeUpApplicationService {
         return latest.get();
     }
 
-    // 方案生成依赖完整产物池；若 catalog 队列仍有待处理 goods，先阻止计算避免给出伪精确 EV。
+    // 关联档位持久化依赖完整产物池；维护类操作仍阻止未补齐 catalog，避免保存半截冗余数据。
     private void assertCatalogSyncComplete(long snapshotId) {
+        CatalogSyncWarning warning = catalogSyncWarning(snapshotId);
+        if (warning.isIncomplete()) {
+            throw new IllegalArgumentException(warning.getMessage());
+        }
+    }
+
+    // 方案生成可以先用已落库 catalog 计算，但需要把产物池未补齐风险返回给前端。
+    private CatalogSyncWarning catalogSyncWarning(long snapshotId) {
         int discoveredCount = catalogSyncTaskStoreService.countAll(snapshotId);
         int remainingCount = catalogSyncTaskStoreService.countOpen(snapshotId);
         if (discoveredCount > 0 && remainingCount > 0) {
-            throw new IllegalArgumentException(ErrorMessages.catalogSyncIncomplete(remainingCount));
+            return new CatalogSyncWarning(true, remainingCount, ErrorMessages.catalogSyncIncompleteWarning(remainingCount));
+        }
+        return new CatalogSyncWarning(false, 0, null);
+    }
+
+    private static class CatalogSyncWarning {
+        private final boolean incomplete;
+        private final int remainingGoodsCount;
+        private final String message;
+
+        CatalogSyncWarning(boolean incomplete, int remainingGoodsCount, String message) {
+            this.incomplete = incomplete;
+            this.remainingGoodsCount = remainingGoodsCount;
+            this.message = message;
+        }
+
+        boolean isIncomplete() {
+            return incomplete;
+        }
+
+        int getRemainingGoodsCount() {
+            return remainingGoodsCount;
+        }
+
+        String getMessage() {
+            return message;
         }
     }
 
