@@ -5,6 +5,7 @@ import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import java.sql.Types;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,7 @@ public class CatalogService {
     private static final Logger log = LoggerFactory.getLogger(CatalogService.class);
 
     private final JdbcTemplate jdbcTemplate;
+    private static final String CATALOG_COLUMNS = "name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price";
 
     public CatalogService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -25,26 +27,44 @@ public class CatalogService {
 
     public List<CatalogSkin> loadAll() {
         List<CatalogSkin> items = jdbcTemplate.query(
-            "SELECT name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price FROM catalog_skin ORDER BY collection_name ASC, rarity ASC, name ASC",
-            (rs, rowNum) -> {
-                CatalogSkin skin = new CatalogSkin();
-                skin.setName(rs.getString("name"));
-                skin.setGoodsId(rs.getString("goods_id"));
-                skin.setCollection(rs.getString("collection_name"));
-                skin.setRarity(rs.getString("rarity"));
-                skin.setCategoryKey(rs.getString("category_key"));
-                skin.setQualityLabel(rs.getString("quality_label"));
-                skin.setMinFloat(rs.getDouble("min_float"));
-                skin.setMaxFloat(rs.getDouble("max_float"));
-                skin.setPrice(rs.getDouble("price"));
-                return skin;
-            }
+            "SELECT " + CATALOG_COLUMNS + " FROM catalog_skin ORDER BY collection_name ASC, rarity ASC, name ASC",
+            (rs, rowNum) -> mapCatalogSkin(rs)
         );
         if (items.isEmpty()) {
             throw new IllegalArgumentException(ErrorMessages.CATALOG_EMPTY);
         }
         log.info("Catalog loaded from database, itemCount={}", Integer.valueOf(items.size()));
         return items;
+    }
+
+    public Optional<CatalogSkin> findByGoodsId(String goodsId) {
+        List<CatalogSkin> rows = jdbcTemplate.query(
+            "SELECT " + CATALOG_COLUMNS + " FROM catalog_skin WHERE goods_id = ? LIMIT 1",
+            (rs, rowNum) -> mapCatalogSkin(rs),
+            goodsId
+        );
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    public List<CatalogSkin> searchTargets(String keyword, int limit) {
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        int normalizedLimit = Math.max(1, Math.min(limit, 100));
+        if (normalizedKeyword.isEmpty()) {
+            return jdbcTemplate.query(
+                "SELECT " + CATALOG_COLUMNS + " FROM catalog_skin WHERE goods_id IS NOT NULL AND goods_id <> '' ORDER BY updated_at DESC, price DESC LIMIT ?",
+                (rs, rowNum) -> mapCatalogSkin(rs),
+                Integer.valueOf(normalizedLimit)
+            );
+        }
+        String pattern = "%" + normalizedKeyword + "%";
+        return jdbcTemplate.query(
+            "SELECT " + CATALOG_COLUMNS + " FROM catalog_skin WHERE goods_id IS NOT NULL AND goods_id <> '' AND (name LIKE ? OR goods_id LIKE ? OR collection_name LIKE ?) ORDER BY price DESC, name ASC LIMIT ?",
+            (rs, rowNum) -> mapCatalogSkin(rs),
+            pattern,
+            pattern,
+            pattern,
+            Integer.valueOf(normalizedLimit)
+        );
     }
 
     public Set<String> loadExistingGoodsIds() {
@@ -153,5 +173,19 @@ public class CatalogService {
     public int count() {
         Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM catalog_skin", Integer.class);
         return count == null ? 0 : count.intValue();
+    }
+
+    private CatalogSkin mapCatalogSkin(java.sql.ResultSet rs) throws java.sql.SQLException {
+        CatalogSkin skin = new CatalogSkin();
+        skin.setName(rs.getString("name"));
+        skin.setGoodsId(rs.getString("goods_id"));
+        skin.setCollection(rs.getString("collection_name"));
+        skin.setRarity(rs.getString("rarity"));
+        skin.setCategoryKey(rs.getString("category_key"));
+        skin.setQualityLabel(rs.getString("quality_label"));
+        skin.setMinFloat(rs.getDouble("min_float"));
+        skin.setMaxFloat(rs.getDouble("max_float"));
+        skin.setPrice(rs.getDouble("price"));
+        return skin;
     }
 }

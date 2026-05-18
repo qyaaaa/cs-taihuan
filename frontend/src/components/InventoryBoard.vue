@@ -75,7 +75,21 @@ watch(
 )
 
 const currency = (value) => `¥${Number(value || 0).toFixed(2)}`
-const displayName = (item) => item?.name || item?.raw?.market_hash_name || '未命名饰品'
+const firstText = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim())
+const displayName = (item) => firstText(
+  item?.name,
+  item?.shortName,
+  item?.short_name,
+  item?.raw?.name,
+  item?.raw?.short_name,
+  item?.raw?.goods_info?.name,
+  item?.raw?.goods_info?.short_name,
+  item?.raw?.asset_info?.info?.name,
+  item?.raw?.asset_info?.info?.short_name,
+  item?.raw?.market_hash_name,
+  item?.raw?.goods_info?.market_hash_name,
+  item?.raw?.asset_info?.info?.market_hash_name
+) || '未命名饰品'
 const imageSource = (item) => {
   return (
     item?.imageUrl
