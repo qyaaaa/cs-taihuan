@@ -171,7 +171,7 @@ public class BuffApiClient {
                 fallbackCollection
             );
         String name = firstNonBlank(
-            stringValue(merged, "market_hash_name", "name", "short_name")
+            stringValue(merged, "name", "short_name", "market_hash_name")
         );
         if (name == null || collection == null || rarity == null) {
             log.info("Skip catalog skin because required fields are missing, goodsId={}, name={}, collection={}, rarity={}, tagKeys={}, goodsInfoKeys={}, infoKeys={}",
@@ -497,7 +497,7 @@ public class BuffApiClient {
                 fallbackCollection
             );
         String name = firstNonBlank(
-            stringValue(merged, "market_hash_name", "name", "short_name")
+            stringValue(merged, "name", "short_name", "market_hash_name")
         );
         if (name == null || collection == null || rarity == null) {
             return null;

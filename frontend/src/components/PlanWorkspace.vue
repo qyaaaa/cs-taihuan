@@ -108,6 +108,21 @@ const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
 const rarityLabel = (rarity) => rarityLabels[rarity] || rarity || '未知档位'
 const nextRarity = (rarity) => rarityOrder[rarityOrder.indexOf(rarity) + 1]
 const metricValue = (item, camelKey, snakeKey) => item?.[camelKey] ?? item?.[snakeKey]
+const firstText = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim())
+const displayName = (item) => firstText(
+  item?.name,
+  item?.shortName,
+  item?.short_name,
+  item?.raw?.name,
+  item?.raw?.short_name,
+  item?.raw?.goods_info?.name,
+  item?.raw?.goods_info?.short_name,
+  item?.raw?.asset_info?.info?.name,
+  item?.raw?.asset_info?.info?.short_name,
+  item?.raw?.market_hash_name,
+  item?.raw?.goods_info?.market_hash_name,
+  item?.raw?.asset_info?.info?.market_hash_name
+) || '未命名饰品'
 const imageSource = (item) => {
   return (
     item?.imageUrl
@@ -118,7 +133,12 @@ const imageSource = (item) => {
     || ''
   )
 }
-const isStatTrakPlan = (plan) => (plan?.inputs || []).some((item) => /stattrak/i.test(item?.name || ''))
+const isStatTrakName = (name) => /stattrak|暗金/i.test(name || '')
+const isStatTrakPlan = (plan) => (plan?.inputs || []).some((item) => (
+  isStatTrakName(displayName(item))
+  || isStatTrakName(item?.raw?.market_hash_name)
+  || isStatTrakName(item?.raw?.goods_info?.market_hash_name)
+))
 const isGoldContract = (plan) => plan?.rarity === 'covert'
 const contractTitle = (rarity) => {
   const target = nextRarity(rarity)
@@ -255,9 +275,9 @@ const contractTitle = (rarity) => {
             <h4>合同输入</h4>
             <div class="detail-list">
               <div v-for="(item, index) in selectedPlan.inputs" :key="index" class="detail-item with-thumb">
-                <img v-if="imageSource(item)" :src="imageSource(item)" :alt="item.name" class="detail-thumb" />
+                <img v-if="imageSource(item)" :src="imageSource(item)" :alt="displayName(item)" class="detail-thumb" />
                 <div>
-                  <strong>{{ item.name }}</strong>
+                  <strong>{{ displayName(item) }}</strong>
                   <p>{{ item.collection || '未补全收藏品' }}</p>
                 </div>
                 <div class="detail-side">
@@ -273,7 +293,7 @@ const contractTitle = (rarity) => {
             <div class="detail-list">
               <div v-for="(outcome, index) in selectedPlan.outcomes" :key="index" class="detail-item">
                 <div>
-                  <strong>{{ outcome.skin.name }}</strong>
+                  <strong>{{ displayName(outcome.skin) }}</strong>
                   <p>{{ outcome.skin.collection }}</p>
                 </div>
                 <div class="detail-side">
