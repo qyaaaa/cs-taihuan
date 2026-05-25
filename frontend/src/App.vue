@@ -9,6 +9,7 @@ import { useTaskMonitor } from './composables/useTaskMonitor'
 import DataPage from './pages/DataPage.vue'
 import FloatCalculatorPage from './pages/FloatCalculatorPage.vue'
 import InventoryPage from './pages/InventoryPage.vue'
+import OddsGalleryPage from './pages/OddsGalleryPage.vue'
 import OverviewPage from './pages/OverviewPage.vue'
 import PlansPage from './pages/PlansPage.vue'
 import { currency, percent } from './utils/formatters'
@@ -62,6 +63,11 @@ const pageMeta = computed(() => {
       title: '特殊磨损计算器',
       description: '反推目标产物磨损所需的下级平均磨损，并在锁定部分材料后重算剩余需求。',
     },
+    odds: {
+      kicker: '概率图鉴',
+      title: '容器概率图鉴',
+      description: '按武器箱、纪念包、收藏包、胶囊、布章包和武库补充规则展示中奖概率。',
+    },
     data: {
       kicker: '数据维护',
       title: '会话与数据维护',
@@ -91,6 +97,11 @@ const navItems = computed(() => [
     key: 'float',
     label: '磨损',
     metric: '反推',
+  },
+  {
+    key: 'odds',
+    label: '概率图鉴',
+    metric: '规则',
   },
   {
     key: 'data',
@@ -403,6 +414,8 @@ onMounted(async () => {
           :account-id="currentAccountId"
           :snapshot-id="inventory.inventoryState.snapshotId"
         />
+
+        <OddsGalleryPage v-else-if="activePage === 'odds'" />
 
         <DataPage
           v-else-if="activePage === 'data'"
