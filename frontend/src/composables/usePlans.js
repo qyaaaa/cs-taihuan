@@ -302,8 +302,31 @@ const numberValue = (...values) => {
   return 0
 }
 
+const firstText = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim())
+
+const displayName = (item) => firstText(
+  item?.name,
+  item?.shortName,
+  item?.short_name,
+  item?.raw?.name,
+  item?.raw?.short_name,
+  item?.raw?.goods_info?.name,
+  item?.raw?.goods_info?.short_name,
+  item?.raw?.asset_info?.info?.name,
+  item?.raw?.asset_info?.info?.short_name,
+  item?.raw?.market_hash_name,
+  item?.raw?.goods_info?.market_hash_name,
+  item?.raw?.asset_info?.info?.market_hash_name
+) || ''
+
+const isStatTrakName = (name) => /stattrak|暗金/i.test(name || '')
+
 const isStatTrakPlan = (plan) => {
-  return (plan?.inputs || []).some((item) => /stattrak/i.test(item?.name || ''))
+  return (plan?.inputs || []).some((item) => (
+    isStatTrakName(displayName(item))
+    || isStatTrakName(item?.raw?.market_hash_name)
+    || isStatTrakName(item?.raw?.goods_info?.market_hash_name)
+  ))
 }
 
 const isGoldContract = (plan) => plan?.rarity === 'covert'

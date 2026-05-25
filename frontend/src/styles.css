@@ -1020,6 +1020,7 @@ button:focus-visible,
 }
 
 .control-field label,
+.control-field > span,
 .plan-count {
   color: var(--muted);
   font-size: 12px;
@@ -1027,6 +1028,10 @@ button:focus-visible,
 
 .control-field .el-select {
   width: 100%;
+}
+
+.control-field.wide {
+  grid-column: span 2;
 }
 
 .control-field .el-segmented {
@@ -1215,6 +1220,462 @@ button:focus-visible,
   font-style: normal;
 }
 
+.float-calculator-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(380px, 0.88fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.float-target-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.float-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.float-contract-badge,
+.float-state-pill {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border: 1px solid rgba(91, 124, 250, 0.36);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.float-form-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) minmax(150px, 0.95fr) minmax(150px, 0.95fr);
+  gap: 12px;
+  margin-top: 16px;
+  align-items: end;
+}
+
+.float-form-grid .control-field.wide {
+  grid-column: auto;
+}
+
+.float-form-grid .el-input-number,
+.float-form-grid .el-select,
+.float-slot .el-input-number {
+  width: 100%;
+}
+
+.float-form-grid .el-select__wrapper,
+.float-form-grid .el-input-number,
+.float-form-grid .el-input-number .el-input__wrapper,
+.float-form-grid .el-segmented {
+  min-height: 36px;
+  height: 36px;
+}
+
+.float-form-grid .el-input-number__decrease,
+.float-form-grid .el-input-number__increase {
+  height: 17px;
+  line-height: 17px;
+}
+
+.float-form-grid .control-field > small {
+  min-height: 18px;
+  line-height: 18px;
+}
+
+.float-target-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-end;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(91, 124, 250, 0.36);
+  background:
+    linear-gradient(90deg, rgba(91, 124, 250, 0.16), rgba(143, 107, 255, 0.08)),
+    var(--surface-soft);
+}
+
+.float-target-summary strong,
+.float-target-summary span,
+.float-target-summary em {
+  display: block;
+}
+
+.float-target-summary span,
+.float-target-summary em {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.float-rule-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.float-rule-strip > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: rgba(17, 22, 29, 0.68);
+}
+
+.float-rule-strip span,
+.float-rule-strip strong {
+  display: block;
+}
+
+.float-rule-strip span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.float-rule-strip strong {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.float-result-panel {
+  border-color: rgba(91, 124, 250, 0.28);
+  background:
+    linear-gradient(180deg, rgba(91, 124, 250, 0.1), rgba(23, 27, 34, 0) 120px),
+    rgba(23, 27, 34, 0.96);
+}
+
+.float-result-panel.reachable {
+  border-color: rgba(91, 196, 138, 0.32);
+}
+
+.float-result-panel.blocked {
+  border-color: rgba(236, 106, 95, 0.34);
+}
+
+.float-result-head,
+.float-material-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.float-result-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.float-result-actions .el-button,
+.float-material-head .el-button {
+  --el-button-bg-color: var(--surface-soft);
+  --el-button-border-color: var(--line-strong);
+  --el-button-text-color: var(--text);
+  --el-button-hover-bg-color: var(--active-bg);
+  --el-button-hover-border-color: rgba(91, 124, 250, 0.42);
+  --el-button-hover-text-color: var(--text);
+  --el-button-disabled-bg-color: var(--field-bg);
+  --el-button-disabled-border-color: var(--line);
+  --el-button-disabled-text-color: var(--muted);
+}
+
+.float-result-actions .el-button--primary {
+  --el-button-bg-color: var(--accent);
+  --el-button-border-color: var(--accent);
+  --el-button-text-color: #ffffff;
+  --el-button-hover-bg-color: var(--accent-strong);
+  --el-button-hover-border-color: var(--accent-strong);
+}
+
+.float-state-pill {
+  border-color: var(--line-strong);
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.float-state-pill.reachable {
+  border-color: rgba(91, 196, 138, 0.4);
+  background: rgba(91, 196, 138, 0.12);
+  color: var(--good);
+}
+
+.float-state-pill.blocked {
+  border-color: rgba(236, 106, 95, 0.42);
+  background: rgba(236, 106, 95, 0.12);
+  color: var(--danger);
+}
+
+.float-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.float-metric-grid > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.float-metric-grid > div.primary-metric {
+  border-color: rgba(91, 124, 250, 0.42);
+  background: rgba(91, 124, 250, 0.13);
+}
+
+.float-metric-grid label,
+.float-bound-row,
+.float-source-row {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.float-metric-grid strong {
+  display: block;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 18px;
+}
+
+.float-bound-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  line-height: 1.6;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.float-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.float-source-row span {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.float-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.float-slot-grid.compact {
+  grid-template-columns: repeat(5, minmax(170px, 1fr));
+}
+
+.float-slot {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: rgba(17, 22, 29, 0.76);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.float-slot.locked {
+  border-color: rgba(91, 124, 250, 0.38);
+  background: var(--active-bg);
+}
+
+.float-slot .el-segmented {
+  --el-segmented-bg-color: var(--field-bg);
+  --el-segmented-item-selected-bg-color: var(--surface-raised);
+  --el-segmented-item-selected-color: var(--text);
+  --el-segmented-item-hover-bg-color: var(--active-bg);
+  --el-border-radius-base: 2px;
+  width: 100%;
+}
+
+.float-slot .el-select {
+  width: 100%;
+}
+
+.float-slot .el-select__wrapper,
+.float-slot .el-input-number,
+.float-slot .el-input-number .el-input__wrapper {
+  min-height: 34px;
+  height: 34px;
+}
+
+.float-slot-item-meta {
+  margin: -2px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.float-slot-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  min-height: 20px;
+}
+
+.float-slot-head strong {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.float-slot > span {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.float-slot.locked > span {
+  border-color: rgba(91, 124, 250, 0.36);
+  color: var(--text);
+}
+
+.odds-gallery {
+  gap: 18px;
+}
+
+.odds-control-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.odds-control-bar .el-segmented {
+  --el-segmented-bg-color: var(--field-bg);
+  --el-segmented-item-selected-bg-color: var(--surface-raised);
+  --el-segmented-item-selected-color: var(--text);
+  --el-segmented-item-hover-bg-color: var(--active-bg);
+  --el-border-radius-base: 2px;
+}
+
+.odds-control-bar .el-segmented__item {
+  min-width: 86px;
+}
+
+.odds-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.odds-category-card {
+  display: grid;
+  gap: 12px;
+}
+
+.odds-category-head {
+  display: grid;
+  gap: 5px;
+}
+
+.odds-category-head span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.odds-category-head strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.odds-prob-table {
+  display: grid;
+  grid-template-columns: 92px repeat(var(--odds-columns), minmax(78px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background: rgba(17, 22, 29, 0.68);
+}
+
+.odds-table-label,
+.odds-quality-cell,
+.odds-value-cell {
+  display: grid;
+  min-height: 34px;
+  place-items: center;
+  padding: 7px 8px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+}
+
+.odds-table-label {
+  color: var(--muted);
+  background: rgba(237, 241, 247, 0.03);
+  font-size: 12px;
+}
+
+.odds-quality-cell {
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.odds-value-cell {
+  color: var(--text);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+}
+
+.odds-even-rule {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-soft);
+}
+
+.odds-even-rule strong {
+  color: var(--text);
+}
+
+.odds-even-rule span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.odds-footnote {
+  display: grid;
+  gap: 8px;
+}
+
+.odds-footnote p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -1334,8 +1795,14 @@ button:focus-visible,
   .data-job-grid,
   .task-overview-grid,
   .plans-layout,
-  .detail-columns {
+  .detail-columns,
+  .float-calculator-grid {
     grid-template-columns: 1fr;
+  }
+
+  .float-slot-grid,
+  .float-slot-grid.compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .plans-layout {
@@ -1379,7 +1846,7 @@ button:focus-visible,
   }
 
   .workspace-nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .nav-item {
@@ -1391,7 +1858,8 @@ button:focus-visible,
   .page-toolbar,
   .detail-hero,
   .account-manager-row,
-  .account-manager-main {
+  .account-manager-main,
+  .odds-control-bar {
     flex-direction: column;
     grid-template-columns: 1fr;
   }
@@ -1402,6 +1870,23 @@ button:focus-visible,
 
   .session-import-head {
     grid-template-columns: 1fr;
+  }
+
+  .float-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .float-rule-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .odds-reference-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .odds-control-bar .el-segmented {
+    width: 100%;
+    overflow-x: auto;
   }
 
   .plan-count {
@@ -1424,8 +1909,16 @@ button:focus-visible,
   .workspace-nav,
   .overview-grid,
   .metrics-row,
-  .inventory-cards {
+  .inventory-cards,
+  .float-form-grid,
+  .float-slot-grid,
+  .float-slot-grid.compact,
+  .float-metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .odds-prob-table {
+    overflow-x: auto;
   }
 
   .workspace-topbar h1 {
@@ -1447,6 +1940,16 @@ button:focus-visible,
 
   .control-field {
     width: 100%;
+  }
+
+  .control-field.wide {
+    grid-column: auto;
+  }
+
+  .float-result-head,
+  .float-material-head,
+  .float-bound-row {
+    display: grid;
   }
 
   .material-thumb {

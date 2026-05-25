@@ -33,3 +33,7 @@ export const postJson = async (url, payload) => {
     body: JSON.stringify(payload),
   })
 }
+
+export const getJson = async (url) => {
+  return request(url)
+}

@@ -7,7 +7,9 @@ import { usePlans } from './composables/usePlans'
 import { useSession } from './composables/useSession'
 import { useTaskMonitor } from './composables/useTaskMonitor'
 import DataPage from './pages/DataPage.vue'
+import FloatCalculatorPage from './pages/FloatCalculatorPage.vue'
 import InventoryPage from './pages/InventoryPage.vue'
+import OddsGalleryPage from './pages/OddsGalleryPage.vue'
 import OverviewPage from './pages/OverviewPage.vue'
 import PlansPage from './pages/PlansPage.vue'
 import { currency, percent } from './utils/formatters'
@@ -56,6 +58,16 @@ const pageMeta = computed(() => {
       title: '期望值推荐方案',
       description: '按期望价值查看推荐合同，选中方案后核对输入素材和潜在产出。',
     },
+    float: {
+      kicker: '磨损计算',
+      title: '特殊磨损计算器',
+      description: '反推目标产物磨损所需的下级平均磨损，并在锁定部分材料后重算剩余需求。',
+    },
+    odds: {
+      kicker: '概率图鉴',
+      title: '容器概率图鉴',
+      description: '按武器箱、纪念包、收藏包、胶囊、布章包和武库补充规则展示中奖概率。',
+    },
     data: {
       kicker: '数据维护',
       title: '会话与数据维护',
@@ -80,6 +92,16 @@ const navItems = computed(() => [
     key: 'plans',
     label: '方案',
     metric: `${plans.sortedPlans.value.length} 条`,
+  },
+  {
+    key: 'float',
+    label: '磨损',
+    metric: '反推',
+  },
+  {
+    key: 'odds',
+    label: '概率图鉴',
+    metric: '规则',
   },
   {
     key: 'data',
@@ -386,6 +408,14 @@ onMounted(async () => {
           @select-plan="plans.selectedPlanIndex.value = $event"
           @update-filter="plans.updatePlanFilter"
         />
+
+        <FloatCalculatorPage
+          v-else-if="activePage === 'float'"
+          :account-id="currentAccountId"
+          :snapshot-id="inventory.inventoryState.snapshotId"
+        />
+
+        <OddsGalleryPage v-else-if="activePage === 'odds'" />
 
         <DataPage
           v-else-if="activePage === 'data'"

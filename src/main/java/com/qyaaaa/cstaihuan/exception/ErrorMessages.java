@@ -57,6 +57,16 @@ public final class ErrorMessages {
     public static final String RARITY_UNSUPPORTED = "rarity 不支持";
     public static final String TRACK_TYPE_UNSUPPORTED = "trackType 不支持";
     public static final String CONTRACT_TYPE_UNSUPPORTED = "contractType 不支持";
+    public static final String TARGET_GOODS_ID_NOT_BLANK = "targetGoodsId 不能为空";
+    public static final String TARGET_FLOAT_REQUIRED = "targetFloat 不能为空";
+    public static final String TARGET_FLOAT_MIN = "targetFloat 不能小于 0";
+    public static final String TARGET_FLOAT_MAX = "targetFloat 不能大于 1";
+    public static final String CONTRACT_SIZE_REQUIRED = "contractSize 不能为空";
+    public static final String CONTRACT_SIZE_UNSUPPORTED = "contractSize 只支持 5 或 10";
+    public static final String CONTRACT_SIZE_TARGET_MISMATCH = "合同数量与目标产物档位不匹配：只有金色目标支持 5 合 1，其它目标必须使用 10 合 1。";
+    public static final String LOCKED_INPUT_FLOAT_MIN = "lockedInputFloats 不能小于 0";
+    public static final String LOCKED_INPUT_FLOAT_MAX = "lockedInputFloats 不能大于 1";
+    public static final String LOCKED_INPUT_FLOAT_SIZE = "lockedInputFloats 最多只能提供 10 个槽位";
 
     private ErrorMessages() {
     }
@@ -83,5 +93,13 @@ public final class ErrorMessages {
 
     public static String buffAccountNotFound(long accountId) {
         return "BUFF 账号不存在：" + accountId;
+    }
+
+    public static String catalogSkinNotFound(String goodsId) {
+        return "Catalog 中未找到目标饰品 goods_id：" + goodsId;
+    }
+
+    public static String targetFloatOutOfRange(double minFloat, double maxFloat) {
+        return "目标磨损必须在目标饰品区间 " + minFloat + " ~ " + maxFloat + " 内。";
     }
 }
