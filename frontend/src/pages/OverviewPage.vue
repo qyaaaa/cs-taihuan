@@ -45,8 +45,8 @@ defineEmits(['change-page', 'open-session', 'optimize-plans'])
         </div>
         <div class="action-list">
           <button type="button" class="action-row" @click="$emit('open-session')">
-            <strong>导入 BUFF 会话</strong>
-            <span>保存 Cookie 后，后端会托管后续抓取请求。</span>
+            <strong>扫码登录 / 导入 BUFF 会话</strong>
+            <span>支持网易 BUFF App 扫码登录，或粘贴 Cookie 导入，后端托管后续抓取请求。</span>
           </button>
           <button type="button" class="action-row" @click="$emit('change-page', 'data')">
             <strong>采集与同步数据</strong>

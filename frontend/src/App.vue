@@ -16,6 +16,9 @@ import { currency, percent } from './utils/formatters'
 
 const activePage = ref('overview')
 const accountDialogVisible = ref(false)
+// When true, the session dialog was opened via 「新增」 and no account exists yet;
+// the account is created only after a successful scan / manual cookie save.
+const pendingNewAccount = ref(false)
 
 const taskMonitor = useTaskMonitor()
 const accounts = useAccounts()
@@ -39,6 +42,9 @@ const session = useSession({
   restorePersistedInventory: inventory.restorePersistedInventory,
   accountId: currentAccountId,
   onAccountUpdated: accounts.loadAccounts,
+  pendingNewAccount,
+  createLocalAccount: accounts.createLocalAccount,
+  selectAccount: accounts.changeAccount,
 })
 
 const pageMeta = computed(() => {
@@ -225,6 +231,8 @@ const changePage = (page, options = {}) => {
 }
 
 const openSessionDialog = () => {
+  // Importing a session for the currently selected account (not a new account).
+  pendingNewAccount.value = false
   changePage('data')
   session.sessionDialogVisible.value = true
 }
@@ -249,12 +257,16 @@ const handleAccountChange = async (accountId) => {
   await refreshCurrentAccountData()
 }
 
-const createAccountAndRefresh = async () => {
-  const account = await accounts.createLocalAccount()
-  if (account) {
-    await refreshCurrentAccountData()
-    session.sessionDialogVisible.value = true
-  }
+const onSessionDialogClosed = () => {
+  session.resetQrLogin()
+  pendingNewAccount.value = false
+}
+
+const openNewAccountDialog = () => {
+  // Don't create the account yet — only open the login dialog. The account is created
+  // once a scan succeeds or a cookie is saved.
+  pendingNewAccount.value = true
+  session.sessionDialogVisible.value = true
 }
 
 const saveAccount = async (account) => {
@@ -333,7 +345,7 @@ onMounted(async () => {
               <small>{{ account.status === 'VALID' ? '已登录' : account.status === 'INVALID' ? '失效' : '未校验' }}</small>
             </el-option>
           </el-select>
-          <el-button size="small" plain :loading="accounts.accountState.loading" @click="createAccountAndRefresh">新增</el-button>
+          <el-button size="small" plain :loading="accounts.accountState.loading" @click="openNewAccountDialog">新增</el-button>
           <el-button size="small" plain @click="accountDialogVisible = true">管理</el-button>
         </div>
       </div>
@@ -439,7 +451,7 @@ onMounted(async () => {
           :task-status-label="taskMonitor.taskStatusLabel"
           :task-type-label="taskMonitor.taskTypeLabel"
           :is-running-task="taskMonitor.isRunningTask"
-          @open-session="session.sessionDialogVisible.value = true"
+          @open-session="openSessionDialog"
           @clear-session="session.clearSession"
           @fetch-inventory="inventory.fetchInventory"
           @force-fetch-inventory="inventory.forceFetchInventory"
@@ -456,45 +468,111 @@ onMounted(async () => {
 
     <el-dialog
       v-model="session.sessionDialogVisible.value"
-      title="导入 BUFF 会话"
+      title="登录 BUFF"
       width="640px"
       class="session-dialog"
+      @closed="onSessionDialogClosed"
     >
-      <div class="session-import-head">
-        <div>
-          <p class="dialog-copy">
-            先打开 BUFF 并确认浏览器已登录，再复制请求头里的完整 Cookie。保存后由后端托管，库存抓取会自动复用它。
-          </p>
-          <p class="surface-note">
-            本地页面不能跨域读取 BUFF Cookie，所以这里不会自动获取浏览器会话。
-          </p>
-        </div>
-        <el-button type="primary" plain @click="openBuffLogin">打开 BUFF</el-button>
-      </div>
-      <div class="session-import-steps">
-        <div class="session-step">
-          <strong>1</strong>
-          <span>在新标签页登录 BUFF，并打开任意市场或库存页面。</span>
-        </div>
-        <div class="session-step">
-          <strong>2</strong>
-          <span>打开浏览器开发者工具，找到 BUFF 请求里的 `Cookie` 请求头。</span>
-        </div>
-        <div class="session-step">
-          <strong>3</strong>
-          <span>复制完整 Cookie 粘贴到下方，保存后系统会自动校验。</span>
-        </div>
-      </div>
-      <el-input
-        v-model="session.sessionForm.cookie"
-        type="textarea"
-        :rows="8"
-        placeholder="session=...; csrf_token=...; Device-Id=..."
-      />
+      <el-tabs v-model="session.qrLogin.activeTab" class="session-tabs">
+        <el-tab-pane label="扫码登录" name="qrcode">
+          <div class="qrcode-login-panel">
+            <p class="dialog-copy">
+              后端自动打开 BUFF 登录页，获取登录二维码。使用网易 BUFF App 扫码即可完成登录，会话由后端托管。
+            </p>
+
+            <!-- QR code image -->
+            <div v-if="session.qrLogin.qrcode" class="qrcode-display">
+              <img
+                :src="'data:image/png;base64,' + session.qrLogin.qrcode"
+                alt="BUFF 登录二维码"
+                class="qrcode-image"
+              />
+            </div>
+            <div v-else-if="session.qrLogin.status === 'IDLE'" class="qrcode-placeholder">
+              <span class="qrcode-placeholder-icon">📱</span>
+              <span>点击下方按钮获取登录二维码</span>
+            </div>
+
+            <!-- Status message -->
+            <div v-if="session.qrLogin.status !== 'IDLE'" class="qrcode-status" :class="session.qrLogin.status.toLowerCase()">
+              <span v-if="session.qrLogin.status === 'PENDING'">⏳ 等待扫码中...</span>
+              <span v-else-if="session.qrLogin.status === 'SCANNED'">📱 已扫码，请在网易 BUFF App 中确认</span>
+              <span v-else-if="session.qrLogin.status === 'CONFIRMED'">✅ 已确认，正在完成登录...</span>
+              <span v-else-if="session.qrLogin.status === 'EXPIRED'">⏰ 二维码已过期，请重新获取</span>
+              <span v-else-if="session.qrLogin.status === 'FAILED'">❌ 登录失败，请重试</span>
+              <span v-else>{{ session.qrLogin.message }}</span>
+            </div>
+
+            <div class="qrcode-actions">
+              <el-button
+                type="primary"
+                :loading="session.loadingSession.value && session.qrLogin.status === 'PENDING'"
+                :disabled="session.qrLogin.status === 'PENDING' || session.qrLogin.status === 'SCANNED' || session.qrLogin.status === 'CONFIRMED'"
+                @click="session.beginQrLogin"
+              >
+                {{ session.qrLogin.status === 'EXPIRED' || session.qrLogin.status === 'FAILED' ? '重新获取二维码' : '获取登录二维码' }}
+              </el-button>
+              <el-button
+                v-if="session.qrLogin.active"
+                plain
+                @click="session.cancelCurrentQrLogin"
+              >
+                取消
+              </el-button>
+            </div>
+
+            <p class="surface-note subtle-note qrcode-hint">
+              需要后端服务器能够访问 BUFF 登录页。如服务器网络受限，请使用「手动导入」方式。
+            </p>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="手动导入" name="manual">
+          <div class="session-import-head">
+            <div>
+              <p class="dialog-copy">
+                先打开 BUFF 并确认浏览器已登录，再复制请求头里的完整 Cookie。保存后由后端托管，库存抓取会自动复用它。
+              </p>
+              <p class="surface-note">
+                本地页面不能跨域读取 BUFF Cookie，所以这里不会自动获取浏览器会话。
+              </p>
+            </div>
+            <el-button type="primary" plain @click="openBuffLogin">打开 BUFF</el-button>
+          </div>
+          <div class="session-import-steps">
+            <div class="session-step">
+              <strong>1</strong>
+              <span>在新标签页登录 BUFF，并打开任意市场或库存页面。</span>
+            </div>
+            <div class="session-step">
+              <strong>2</strong>
+              <span>打开浏览器开发者工具，找到 BUFF 请求里的 `Cookie` 请求头。</span>
+            </div>
+            <div class="session-step">
+              <strong>3</strong>
+              <span>复制完整 Cookie 粘贴到下方，保存后系统会自动校验。</span>
+            </div>
+          </div>
+          <el-input
+            v-model="session.sessionForm.cookie"
+            type="textarea"
+            :rows="8"
+            placeholder="session=...; csrf_token=...; Device-Id=..."
+          />
+        </el-tab-pane>
+      </el-tabs>
+
       <template #footer>
         <div class="dialog-actions">
           <el-button @click="session.sessionDialogVisible.value = false">取消</el-button>
-          <el-button type="primary" :loading="session.loadingSession.value" @click="session.saveSession">保存会话</el-button>
+          <el-button
+            v-if="session.qrLogin.activeTab === 'manual'"
+            type="primary"
+            :loading="session.loadingSession.value"
+            @click="session.saveSession"
+          >
+            保存会话
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -528,7 +606,7 @@ onMounted(async () => {
       <template #footer>
         <div class="dialog-actions">
           <el-button @click="accountDialogVisible = false">关闭</el-button>
-          <el-button type="primary" plain :loading="accounts.accountState.loading" @click="createAccountAndRefresh">新增账号</el-button>
+          <el-button type="primary" plain :loading="accounts.accountState.loading" @click="openNewAccountDialog">新增账号</el-button>
         </div>
       </template>
     </el-dialog>

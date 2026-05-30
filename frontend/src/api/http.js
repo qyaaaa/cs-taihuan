@@ -23,7 +23,12 @@ export const request = async (url, options = {}) => {
   if (response.status === 204) {
     return null
   }
-  return response.json()
+  // Some endpoints (e.g. DELETE) return 200 with an empty body; avoid JSON parse errors.
+  const text = await response.text()
+  if (!text) {
+    return null
+  }
+  return JSON.parse(text)
 }
 
 export const postJson = async (url, payload) => {

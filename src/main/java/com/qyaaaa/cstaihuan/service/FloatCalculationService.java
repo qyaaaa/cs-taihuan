@@ -7,11 +7,13 @@ import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.stereotype.Service;
 
 @Service
 public class FloatCalculationService {
     private static final double EPSILON = 0.000000001d;
+    private static final Locale FORMAT_LOCALE = Locale.ROOT;
 
     private final CatalogService catalogService;
 
@@ -55,8 +57,8 @@ public class FloatCalculationService {
         double requiredAverage = (targetFloat - targetMinFloat) / targetRange;
         double requiredTotal = requiredAverage * contractSize;
         LockedFloats locked = sumLockedFloats(lockedInputFloats);
-        int remainingSlots = contractSize - locked.count;
-        double remainingTotal = requiredTotal - locked.sum;
+        int remainingSlots = contractSize - locked.getCount();
+        double remainingTotal = requiredTotal - locked.getSum();
         boolean reachable = requiredAverage >= -EPSILON
             && requiredAverage <= 1d + EPSILON
             && remainingTotal >= -EPSILON
@@ -74,13 +76,15 @@ public class FloatCalculationService {
         response.setContractSize(contractSize);
         response.setRequiredAverageInputFloat(clampTiny(requiredAverage));
         response.setRequiredTotalInputFloat(clampTiny(requiredTotal));
-        response.setLockedFloatSum(clampTiny(locked.sum));
-        response.setLockedSlotCount(locked.count);
+        response.setLockedFloatSum(clampTiny(locked.getSum()));
+        response.setLockedSlotCount(locked.getCount());
         response.setRemainingSlotCount(remainingSlots);
         if (remainingSlots > 0) {
             response.setRequiredRemainingAverageFloat(clampTiny(remainingTotal / remainingSlots));
-            response.setAllowedRemainingMinFloat(clampTiny(boundUnit(remainingTotal - (remainingSlots - 1))));
-            response.setAllowedRemainingMaxFloat(clampTiny(boundUnit(remainingTotal)));
+            if (reachable) {
+                response.setAllowedRemainingMinFloat(clampTiny(boundUnit(remainingTotal - (remainingSlots - 1))));
+                response.setAllowedRemainingMaxFloat(clampTiny(boundUnit(remainingTotal)));
+            }
         }
         response.setReachable(reachable);
         response.setMessage(buildMessage(reachable, remainingSlots, response.getRequiredRemainingAverageFloat()));
@@ -103,18 +107,19 @@ public class FloatCalculationService {
     }
 
     private LockedFloats sumLockedFloats(List<Double> values) {
-        LockedFloats locked = new LockedFloats();
         if (values == null) {
-            return locked;
+            return LockedFloats.empty();
         }
+        double sum = 0.0d;
+        int count = 0;
         for (Double value : values) {
             if (value == null) {
                 continue;
             }
-            locked.sum += value.doubleValue();
-            locked.count++;
+            sum += value.doubleValue();
+            count++;
         }
-        return locked;
+        return new LockedFloats(sum, count);
     }
 
     private String buildMessage(boolean reachable, int remainingSlots, Double requiredRemainingAverage) {
@@ -131,7 +136,7 @@ public class FloatCalculationService {
         if (value == null) {
             return "--";
         }
-        return String.format(java.util.Locale.ROOT, "%.8f", value);
+        return String.format(FORMAT_LOCALE, "%.8f", value);
     }
 
     private double clampTiny(double value) {
@@ -161,8 +166,27 @@ public class FloatCalculationService {
         return option;
     }
 
-    private static class LockedFloats {
-        private double sum;
-        private int count;
+    private static final class LockedFloats {
+        private static final LockedFloats EMPTY = new LockedFloats(0.0d, 0);
+
+        private final double sum;
+        private final int count;
+
+        private LockedFloats(double sum, int count) {
+            this.sum = sum;
+            this.count = count;
+        }
+
+        private static LockedFloats empty() {
+            return EMPTY;
+        }
+
+        private double getSum() {
+            return sum;
+        }
+
+        private int getCount() {
+            return count;
+        }
     }
 }
