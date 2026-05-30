@@ -12,10 +12,22 @@ sequenceDiagram
     participant BUFF as BUFF
     participant DB as MySQL
 
-    User->>FE: 选择或新增 BUFF 账号
-    User->>FE: 导入当前账号 Cookie
-    FE->>API: 保存账号会话
-    API->>DB: 按 account_id 保存会话状态
+    User->>FE: 选择已有账号，或点「新增」打开登录对话框
+    alt 扫码登录
+        FE->>API: POST /api/buff/login/qrcode/start
+        API->>BUFF: 打开 BUFF 登录页，抓取二维码
+        API-->>FE: 返回二维码与 sessionId
+        User->>BUFF: 用网易 BUFF App 扫码确认
+        loop 前端轮询扫码状态
+            FE->>API: GET /api/buff/login/qrcode/status
+            API-->>FE: PENDING/CONFIRMED/SUCCESS
+        end
+        API->>DB: 登录成功后创建账号并保存会话
+    else 手动导入 Cookie
+        User->>FE: 粘贴当前账号 Cookie
+        FE->>API: 保存账号会话（保存时才创建新账号）
+        API->>DB: 按 account_id 保存会话状态
+    end
 
     User->>FE: 点击从 BUFF 获取库存
     FE->>API: 创建库存抓取任务
@@ -71,6 +83,7 @@ co_flyway_schema_history
 
 - `buff_account`、`buff_session`、`inventory_snapshot`、`catalog_sync_task`、`trade_up_next_tier_item` 按 `account_id` 隔离。
 - `catalog_skin` 是 BUFF 市场目录，跨账号共享，避免重复同步同一批商品数据。
+- 删除账号时会一并清理该账号的会话、库存快照、目录同步任务和关联档位数据，不留孤儿记录（`catalog_skin` 不受影响）。
 - 老接口仍可使用，内部默认走第一个账号；新前端会优先使用 `/api/accounts/{accountId}/...`。
 
 ## 2. 启动项目
@@ -172,7 +185,7 @@ flowchart TD
 
 数据页是所有长任务入口：
 
-- `导入会话`：保存浏览器复制出来的 BUFF Cookie
+- `扫码 / 导入会话`：打开登录对话框，支持网易 BUFF App 扫码登录或手动粘贴 Cookie
 - `校验会话`：检查 Cookie 是否仍然有效
 - `清除会话`：删除后端托管的 Cookie
 - `从 BUFF 获取库存`：分页抓取 BUFF 库存并落库
@@ -180,25 +193,31 @@ flowchart TD
 - `从 BUFF 同步目录数据`：按库存里的 `goods_id` 补齐市场目录数据
 - `保存关联档位数据`：为方案计算补齐上级/下级冗余数据
 
-## 4. 获取 BUFF Cookie
+## 4. 登录 BUFF
 
-当前项目不使用后台 yml 配置 session，也不使用扫码登录。推荐方式是从浏览器复制 Cookie。
+不再需要在后台 yml 配置 session。`数据页 -> 登录中心 -> 扫码 / 导入会话` 打开登录对话框，提供两种方式。
 
-操作步骤：
+> 点「新增」只是打开登录对话框，**不会立即创建账号**。只有扫码登录成功、或手动保存 Cookie 时才会创建账号；中途关闭对话框不会留下空账号。
 
-1. 打开浏览器并登录 BUFF。
-2. 打开开发者工具。
-3. 进入 `Network` 面板。
-4. 刷新 BUFF 页面或点开任意 BUFF 请求。
-5. 在请求头里找到 `Cookie`。
-6. 复制完整 Cookie 字符串。
-7. 回到前端 `数据页 -> 登录中心 -> 导入会话`。
-8. 粘贴 Cookie 并保存。
+### 方式一：扫码登录（推荐）
+
+1. 打开登录对话框，默认在「扫码登录」标签页。
+2. 点「获取登录二维码」，后端会自动打开 BUFF 登录页并抓取二维码。
+3. 用网易 BUFF App 扫码并确认。
+4. 登录成功后，后端保存会话并自动创建/绑定账号，前端切换到该账号。
+
+> 扫码需要后端服务器能访问 BUFF 登录页。若服务器网络受限，请改用手动导入。
+
+### 方式二：手动导入 Cookie
+
+1. 打开浏览器并登录 BUFF，打开开发者工具的 `Network` 面板。
+2. 刷新 BUFF 页面或点开任意 BUFF 请求，在请求头里找到 `Cookie` 并复制完整字符串。
+3. 在登录对话框切到「手动导入」标签页，粘贴 Cookie 并保存。
 
 注意：
 
 - Cookie 是敏感信息，不要提交到 Git。
-- Cookie 过期后，需要重新导入。
+- Cookie / 扫码会话过期后，需要重新登录。
 - 如果校验失败，通常是 Cookie 不完整或 BUFF 登录态过期。
 
 ## 5. 抓取库存

@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
@@ -68,12 +69,20 @@ public class BuffAccountService {
         return requireAccount(accountId);
     }
 
+    @Transactional
     public void deleteAccount(long accountId) {
         requireAccount(accountId);
         if (listAccounts().size() <= 1) {
             throw new IllegalArgumentException(ErrorMessages.BUFF_ACCOUNT_KEEP_ONE);
         }
-        jdbcTemplate.update("DELETE FROM buff_account WHERE id = ?", Long.valueOf(accountId));
+        // These tables carry account_id but have no FK cascade; clean their rows explicitly
+        // (children first) so deleting an account leaves no orphan data behind.
+        Long id = Long.valueOf(accountId);
+        jdbcTemplate.update("DELETE FROM catalog_sync_task WHERE account_id = ?", id);
+        jdbcTemplate.update("DELETE FROM trade_up_next_tier_item WHERE account_id = ?", id);
+        jdbcTemplate.update("DELETE FROM inventory_snapshot WHERE account_id = ?", id);
+        // buff_session is removed automatically via ON DELETE CASCADE.
+        jdbcTemplate.update("DELETE FROM buff_account WHERE id = ?", id);
     }
 
     public long resolveDefaultAccountId() {

@@ -112,10 +112,10 @@ defineEmits([
           <strong class="session-mask">{{ sessionState.maskedCookie || '尚未导入 Cookie' }}</strong>
           <p class="surface-note">{{ sessionState.message }}</p>
           <p class="surface-note subtle-note">
-            BUFF 暂无稳定公开的第三方网页扫码接口，这一版先由前端管理后端托管会话，不再要求在 yml 中手配 session。
+            支持网易 BUFF App 扫码登录，由后端托管会话；也可手动粘贴 Cookie 导入。不再要求在 yml 中手配 session。
           </p>
           <div class="inline-actions">
-            <el-button type="primary" :loading="loadingSession" @click="$emit('open-session')">导入会话</el-button>
+            <el-button type="primary" :loading="loadingSession" @click="$emit('open-session')">扫码 / 导入会话</el-button>
             <el-button plain :loading="loadingSession" @click="$emit('clear-session')">清除会话</el-button>
           </div>
         </div>

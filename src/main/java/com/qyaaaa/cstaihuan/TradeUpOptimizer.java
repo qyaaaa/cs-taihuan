@@ -16,11 +16,50 @@ import java.util.Map;
 import java.util.Set;
 
 public final class TradeUpOptimizer {
+    private static final String KEY_SEPARATOR = "||";
+    private static final String[] WEAR_SUFFIXES = new String[] {
+        " (Factory New)",
+        " (Minimal Wear)",
+        " (Field-Tested)",
+        " (Well-Worn)",
+        " (Battle-Scarred)",
+        " (崭新出厂)",
+        " (略有磨损)",
+        " (久经沙场)",
+        " (破损不堪)",
+        " (战痕累累)"
+    };
+    private static final String[] GLOVE_KEYWORDS = new String[] {
+        "glove",
+        "hand wrap",
+        "手套",
+        "裹手",
+        "驾驶",
+        "运动",
+        "专业",
+        "摩托",
+        "九头蛇",
+        "狂牙",
+        "血猎"
+    };
+    private static final Comparator<FloatPriceBand> PRICE_BAND_BY_MIN_FLOAT = (left, right) ->
+        Double.compare(left.getMinFloat(), right.getMinFloat());
+    private static final Comparator<BuffItem> INPUT_BY_PRICE_AND_FLOAT = (left, right) -> {
+        int byPrice = Double.compare(left.getPrice(), right.getPrice());
+        if (byPrice != 0) {
+            return byPrice;
+        }
+        return Double.compare(left.getFloatValue(), right.getFloatValue());
+    };
+    private static final Comparator<Outcome> OUTCOME_BY_PROBABILITY_DESC = (left, right) ->
+        Double.compare(right.getProbability(), left.getProbability());
+
     private final double saleFeeRate;
     private final Map<String, Double> outputPriceFactors = new HashMap<String, Double>();
     private final Map<String, List<FloatPriceBand>> outputPriceBands = new HashMap<String, List<FloatPriceBand>>();
     private final Map<String, CatalogSkin> catalogByName = new HashMap<String, CatalogSkin>();
     private final Map<String, List<OutputFamily>> outputFamiliesByCollectionRarityAndTrack = new HashMap<String, List<OutputFamily>>();
+    private final Map<String, List<OutputFamily>> statTrakGoldKnifeFamiliesByCollection = new HashMap<String, List<OutputFamily>>();
 
     public TradeUpOptimizer(List<CatalogSkin> catalog, double saleFeeRate) {
         this(catalog, saleFeeRate, null);
@@ -52,11 +91,7 @@ public final class TradeUpOptimizer {
                     }
                 }
                 if (!bands.isEmpty()) {
-                    Collections.sort(bands, new Comparator<FloatPriceBand>() {
-                        public int compare(FloatPriceBand left, FloatPriceBand right) {
-                            return Double.compare(left.getMinFloat(), right.getMinFloat());
-                        }
-                    });
+                    Collections.sort(bands, PRICE_BAND_BY_MIN_FLOAT);
                     this.outputPriceBands.put(normalizeKey(entry.getKey()), bands);
                 }
             }
@@ -81,6 +116,14 @@ public final class TradeUpOptimizer {
                 outputFamiliesByCollectionRarityAndTrack.put(familyGroupKey, rows);
             }
             rows.add(family);
+            if ("gold".equals(family.rarity) && family.statTrak && !family.isGloveFamily()) {
+                List<OutputFamily> knifeRows = statTrakGoldKnifeFamiliesByCollection.get(family.collection);
+                if (knifeRows == null) {
+                    knifeRows = new ArrayList<OutputFamily>();
+                    statTrakGoldKnifeFamiliesByCollection.put(family.collection, knifeRows);
+                }
+                knifeRows.add(family);
+            }
         }
     }
 
@@ -104,7 +147,7 @@ public final class TradeUpOptimizer {
 
     // 生成候选合同：先过滤无效素材，再按投入品质和暗金状态分桶，最后枚举每个桶里的可行组合。
     public List<TradeUpPlan> findBestContracts(List<BuffItem> items, int topK, int maxItemsPerRarity, int maxCombinations, String sortBy, String rarityFilter, String trackTypeFilter, String contractTypeFilter) {
-        Map<String, List<BuffItem>> byRarity = new HashMap<String, List<BuffItem>>();
+        Map<String, List<BuffItem>> byRarity = new HashMap<String, List<BuffItem>>(8);
         for (BuffItem item : items) {
             String contractRarity = contractRarity(item);
             if (!matchesRarity(contractRarity, rarityFilter) || !matchesTrack(item, trackTypeFilter) || !matchesContractType(contractRarity, contractTypeFilter)) {
@@ -119,10 +162,11 @@ public final class TradeUpOptimizer {
             if (!hasValidOutcomes(item)) {
                 continue;
             }
-            List<BuffItem> rows = byRarity.get(contractBucketKey(contractRarity, item));
+            String bucketKey = contractBucketKey(contractRarity, item);
+            List<BuffItem> rows = byRarity.get(bucketKey);
             if (rows == null) {
                 rows = new ArrayList<BuffItem>();
-                byRarity.put(contractBucketKey(contractRarity, item), rows);
+                byRarity.put(bucketKey, rows);
             }
             rows.add(item);
         }
@@ -130,21 +174,11 @@ public final class TradeUpOptimizer {
         List<TradeUpPlan> candidates = new ArrayList<TradeUpPlan>();
         Set<String> generatedSignatures = new HashSet<String>();
         for (Map.Entry<String, List<BuffItem>> entry : byRarity.entrySet()) {
-            List<BuffItem> shortlist = new ArrayList<BuffItem>(entry.getValue());
-            Collections.sort(shortlist, new Comparator<BuffItem>() {
-                public int compare(BuffItem left, BuffItem right) {
-                    int byPrice = Double.compare(left.getPrice(), right.getPrice());
-                    if (byPrice != 0) {
-                        return byPrice;
-                    }
-                    return Double.compare(left.getFloatValue(), right.getFloatValue());
-                }
-            });
-            if (shortlist.size() > maxItemsPerRarity) {
-                shortlist = new ArrayList<BuffItem>(shortlist.subList(0, maxItemsPerRarity));
-            }
+            List<BuffItem> shortlist = entry.getValue();
+            Collections.sort(shortlist, INPUT_BY_PRICE_AND_FLOAT);
+            int itemLimit = Math.min(shortlist.size(), maxItemsPerRarity);
             String rarity = contractRarityFromBucketKey(entry.getKey());
-            enumerate(shortlist, rarity, contractSize(rarity), 0, new ArrayList<BuffItem>(), candidates, generatedSignatures, maxCombinations);
+            enumerate(shortlist, itemLimit, rarity, contractSize(rarity), 0, new ArrayList<BuffItem>(), candidates, generatedSignatures, maxCombinations);
         }
 
         Collections.sort(candidates, planComparator(sortBy));
@@ -208,22 +242,20 @@ public final class TradeUpOptimizer {
 
     // 统一所有排序入口的兜底顺序，避免主排序字段相等时推荐结果抖动。
     private static Comparator<TradeUpPlan> planComparator(final String sortBy) {
-        return new Comparator<TradeUpPlan>() {
-            public int compare(TradeUpPlan left, TradeUpPlan right) {
-                int primary = comparePrimary(left, right, sortBy);
-                if (primary != 0) {
-                    return primary;
-                }
-                int byProfit = Double.compare(right.getExpectedProfit(), left.getExpectedProfit());
-                if (byProfit != 0) {
-                    return byProfit;
-                }
-                int byRoi = Double.compare(right.getRoi(), left.getRoi());
-                if (byRoi != 0) {
-                    return byRoi;
-                }
-                return Double.compare(left.getInputCost(), right.getInputCost());
+        return (left, right) -> {
+            int primary = comparePrimary(left, right, sortBy);
+            if (primary != 0) {
+                return primary;
             }
+            int byProfit = Double.compare(right.getExpectedProfit(), left.getExpectedProfit());
+            if (byProfit != 0) {
+                return byProfit;
+            }
+            int byRoi = Double.compare(right.getRoi(), left.getRoi());
+            if (byRoi != 0) {
+                return byRoi;
+            }
+            return Double.compare(left.getInputCost(), right.getInputCost());
         };
     }
 
@@ -269,8 +301,12 @@ public final class TradeUpOptimizer {
     }
 
     // 深度优先枚举合同槽位：常规 10 件，隐秘到金色 5 件，并用 maxCombinations 控制爆炸式组合数。
-    private void enumerate(List<BuffItem> shortlist, String rarity, int contractSize, int start, List<BuffItem> current, List<TradeUpPlan> candidates, Set<String> generatedSignatures, int maxCombinations) {
+    private void enumerate(List<BuffItem> shortlist, int itemLimit, String rarity, int contractSize, int start, List<BuffItem> current, List<TradeUpPlan> candidates, Set<String> generatedSignatures, int maxCombinations) {
         if (candidates.size() >= maxCombinations) {
+            return;
+        }
+        int remainingSlots = contractSize - current.size();
+        if (itemLimit - start < remainingSlots) {
             return;
         }
         if (current.size() == contractSize) {
@@ -280,9 +316,16 @@ public final class TradeUpOptimizer {
             }
             return;
         }
-        for (int i = start; i <= shortlist.size() - (contractSize - current.size()); i++) {
-            current.add(shortlist.get(i));
-            enumerate(shortlist, rarity, contractSize, i + 1, current, candidates, generatedSignatures, maxCombinations);
+        String previousInputSignature = null;
+        for (int i = start; i <= itemLimit - remainingSlots; i++) {
+            BuffItem item = shortlist.get(i);
+            String currentInputSignature = inputSignature(item);
+            if (currentInputSignature.equals(previousInputSignature)) {
+                continue;
+            }
+            previousInputSignature = currentInputSignature;
+            current.add(item);
+            enumerate(shortlist, itemLimit, rarity, contractSize, i + 1, current, candidates, generatedSignatures, maxCombinations);
             current.remove(current.size() - 1);
             if (candidates.size() >= maxCombinations) {
                 return;
@@ -330,7 +373,7 @@ public final class TradeUpOptimizer {
     private TradeUpPlan evaluateContract(String rarity, List<BuffItem> combo) {
         double totalCost = 0.0d;
         double totalFloat = 0.0d;
-        Map<String, Integer> collectionCounts = new HashMap<String, Integer>();
+        Map<String, Integer> collectionCounts = new HashMap<String, Integer>(mapCapacity(combo.size()));
         String targetRarity = Rarity.next(rarity);
         for (BuffItem item : combo) {
             totalCost += item.getPrice();
@@ -362,11 +405,7 @@ public final class TradeUpOptimizer {
             }
         }
 
-        Collections.sort(outcomes, new Comparator<Outcome>() {
-            public int compare(Outcome left, Outcome right) {
-                return Double.compare(right.getProbability(), left.getProbability());
-            }
-        });
+        Collections.sort(outcomes, OUTCOME_BY_PROBABILITY_DESC);
 
         double profit = expectedValue - totalCost;
         double roi = totalCost == 0.0d ? 0.0d : profit / totalCost;
@@ -386,17 +425,11 @@ public final class TradeUpOptimizer {
     }
 
     private List<OutputFamily> statTrakGoldKnifeFamilies(String collection) {
-        List<OutputFamily> families = outputFamiliesByCollectionRarityAndTrack.get(outputFamilyGroupKey(collection, "gold", true));
+        List<OutputFamily> families = statTrakGoldKnifeFamiliesByCollection.get(collection);
         if (families == null || families.isEmpty()) {
             return Collections.emptyList();
         }
-        List<OutputFamily> filtered = new ArrayList<OutputFamily>();
-        for (OutputFamily family : families) {
-            if (!family.isGloveFamily()) {
-                filtered.add(family);
-            }
-        }
-        return filtered;
+        return families;
     }
 
     private double adjustedOutputPrice(CatalogSkin skin, double estimatedFloat) {
@@ -480,19 +513,32 @@ public final class TradeUpOptimizer {
     }
 
     private static String outputFamilyGroupKey(String collection, String rarity, boolean statTrak) {
-        return collection + "||" + rarity + "||" + statTrak;
+        return new StringBuilder(32)
+            .append(collection)
+            .append(KEY_SEPARATOR)
+            .append(rarity)
+            .append(KEY_SEPARATOR)
+            .append(statTrak)
+            .toString();
     }
 
     private static String outputFamilyKey(CatalogSkin skin) {
-        return outputFamilyGroupKey(skin.getCollection(), skin.getRarity(), isStatTrakName(skin.getName())) + "||" + baseSkinName(skin.getName());
+        return new StringBuilder(outputFamilyGroupKey(skin.getCollection(), skin.getRarity(), isStatTrakName(skin.getName())))
+            .append(KEY_SEPARATOR)
+            .append(baseSkinName(skin.getName()))
+            .toString();
     }
 
     private static String contractBucketKey(String rarity, BuffItem item) {
-        return rarity + "||" + isStatTrakItem(item);
+        return new StringBuilder(16)
+            .append(rarity)
+            .append(KEY_SEPARATOR)
+            .append(isStatTrakItem(item))
+            .toString();
     }
 
     private static String contractRarityFromBucketKey(String bucketKey) {
-        int separator = bucketKey.indexOf("||");
+        int separator = bucketKey.indexOf(KEY_SEPARATOR);
         return separator < 0 ? bucketKey : bucketKey.substring(0, separator);
     }
 
@@ -549,24 +595,16 @@ public final class TradeUpOptimizer {
             return "";
         }
         String trimmed = name.trim();
-        String[] wearSuffixes = new String[] {
-            " (Factory New)",
-            " (Minimal Wear)",
-            " (Field-Tested)",
-            " (Well-Worn)",
-            " (Battle-Scarred)",
-            " (崭新出厂)",
-            " (略有磨损)",
-            " (久经沙场)",
-            " (破损不堪)",
-            " (战痕累累)"
-        };
-        for (String suffix : wearSuffixes) {
+        for (String suffix : WEAR_SUFFIXES) {
             if (trimmed.endsWith(suffix)) {
                 return trimmed.substring(0, trimmed.length() - suffix.length()).trim();
             }
         }
         return trimmed;
+    }
+
+    private static int mapCapacity(int expectedSize) {
+        return Math.max(4, (int) (expectedSize / 0.75f) + 1);
     }
 
     private static final class OutputFamily {
@@ -575,6 +613,7 @@ public final class TradeUpOptimizer {
         private final boolean statTrak;
         private final String categoryKey;
         private final String name;
+        private final boolean gloveFamily;
         private final List<CatalogSkin> variants = new ArrayList<CatalogSkin>();
         private double minFloat = Double.MAX_VALUE;
         private double maxFloat = 0.0d;
@@ -585,6 +624,7 @@ public final class TradeUpOptimizer {
             this.statTrak = statTrak;
             this.categoryKey = categoryKey;
             this.name = name;
+            this.gloveFamily = isGloveFamily(categoryKey, name);
         }
 
         private void addVariant(CatalogSkin skin) {
@@ -615,18 +655,17 @@ public final class TradeUpOptimizer {
 
         // BUFF/CS 数据里手套分类和名称可能中英文混杂，所以同时检查分类 key 和基础名称。
         private boolean isGloveFamily() {
-            String text = normalizeKey(categoryKey) + " " + normalizeKey(name);
-            return text.contains("glove")
-                || text.contains("hand wrap")
-                || text.contains("手套")
-                || text.contains("裹手")
-                || text.contains("驾驶")
-                || text.contains("运动")
-                || text.contains("专业")
-                || text.contains("摩托")
-                || text.contains("九头蛇")
-                || text.contains("狂牙")
-                || text.contains("血猎");
+            return gloveFamily;
+        }
+
+        private static boolean isGloveFamily(String categoryKey, String name) {
+            String text = normalizeKey(categoryKey) + ' ' + normalizeKey(name);
+            for (String keyword : GLOVE_KEYWORDS) {
+                if (text.contains(keyword)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
