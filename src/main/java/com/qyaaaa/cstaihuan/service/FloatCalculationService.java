@@ -6,6 +6,7 @@ import com.qyaaaa.cstaihuan.dto.FloatTargetOption;
 import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import com.qyaaaa.cstaihuan.model.SkinFloatRange;
+import com.qyaaaa.cstaihuan.util.SkinRarity;
 import com.qyaaaa.cstaihuan.util.WearSuffix;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -30,9 +31,9 @@ public class FloatCalculationService {
     }
 
     /** Field-scoped target search merging BUFF catalog (preferred) with the float-range library. */
-    public List<FloatTargetOption> searchTargets(String collection, String name, int limit) {
+    public List<FloatTargetOption> searchTargets(String collection, String name, String rarity, int limit) {
         Map<String, FloatTargetOption> byKey = new LinkedHashMap<String, FloatTargetOption>();
-        for (CatalogSkin skin : catalogService.searchTargets(collection, name, limit)) {
+        for (CatalogSkin skin : catalogService.searchTargets(collection, name, rarity, limit)) {
             FloatTargetOption option = toOption(skin);
             if (isDefaultRange(option.getMinFloat(), option.getMaxFloat())) {
                 Optional<SkinFloatRange> r = skinFloatRangeService.findByName(skin.getName());
@@ -43,7 +44,7 @@ public class FloatCalculationService {
             }
             byKey.put(WearSuffix.toMatchKey(skin.getName()), option);
         }
-        for (SkinFloatRange row : skinFloatRangeService.search(collection, name, limit)) {
+        for (SkinFloatRange row : skinFloatRangeService.search(collection, name, rarity, limit)) {
             String key = StringUtils.hasText(row.getBaseNameEn()) ? row.getBaseNameEn() : WearSuffix.toMatchKey(row.getNameEn());
             if (!byKey.containsKey(key)) {
                 byKey.put(key, toOption(row));
@@ -207,7 +208,8 @@ public class FloatCalculationService {
         option.setGoodsId(null);
         option.setName(StringUtils.hasText(row.getNameZh()) ? row.getNameZh() : row.getNameEn());
         option.setCollection(StringUtils.hasText(row.getCollectionZh()) ? row.getCollectionZh() : row.getCollectionEn());
-        option.setRarity(mapRarity(row));
+        // Rarity is already normalized to the trade-up scheme at import time.
+        option.setRarity(SkinRarity.normalize(row.getRarity(), row.getWeapon()));
         option.setQualityLabel(null);
         option.setMinFloat(row.getMinFloat());
         option.setMaxFloat(row.getMaxFloat());
@@ -249,7 +251,7 @@ public class FloatCalculationService {
             t.goodsId = null;
             t.name = StringUtils.hasText(r.getNameZh()) ? r.getNameZh() : r.getNameEn();
             t.collection = StringUtils.hasText(r.getCollectionZh()) ? r.getCollectionZh() : r.getCollectionEn();
-            t.rarity = mapRarity(r);
+            t.rarity = SkinRarity.normalize(r.getRarity(), r.getWeapon());
             t.qualityLabel = null;
             t.minFloat = r.getMinFloat();
             t.maxFloat = r.getMaxFloat();
@@ -260,39 +262,6 @@ public class FloatCalculationService {
 
     private boolean isDefaultRange(double min, double max) {
         return min <= EPSILON && max >= 1d - EPSILON;
-    }
-
-    // Maps the library's rarity/weapon to the trade-up rarity scheme used for contract sizing.
-    private String mapRarity(SkinFloatRange row) {
-        String rarity = row.getRarity() == null ? "" : row.getRarity().trim().toLowerCase();
-        String weapon = row.getWeapon() == null ? "" : row.getWeapon().trim().toLowerCase();
-        if (rarity.contains("extraordinary") || isKnifeOrGlove(weapon)) {
-            return "gold";
-        }
-        if (rarity.contains("covert")) {
-            return "covert";
-        }
-        if (rarity.contains("classified")) {
-            return "classified";
-        }
-        if (rarity.contains("restricted")) {
-            return "restricted";
-        }
-        if (rarity.contains("mil-spec") || rarity.contains("mil spec")) {
-            return "mil-spec";
-        }
-        if (rarity.contains("industrial")) {
-            return "industrial";
-        }
-        if (rarity.contains("consumer")) {
-            return "consumer";
-        }
-        return rarity;
-    }
-
-    private boolean isKnifeOrGlove(String weapon) {
-        return weapon.contains("knife") || weapon.contains("glove") || weapon.contains("hand wrap")
-            || weapon.contains("karambit") || weapon.contains("bayonet") || weapon.contains("daggers");
     }
 
     private static final class ResolvedTarget {

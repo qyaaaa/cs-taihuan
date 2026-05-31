@@ -21,6 +21,15 @@ const calculating = ref(false)
 const targetOptions = ref([])
 const collectionOptions = ref([])
 const selectedCollection = ref('')
+const selectedRarity = ref('')
+const rarityOptions = [
+  { value: '', label: '全部档位' },
+  { value: 'mil-spec', label: '军规级（蓝）' },
+  { value: 'restricted', label: '受限（紫）' },
+  { value: 'classified', label: '保密（粉）' },
+  { value: 'covert', label: '隐秘（红）' },
+  { value: 'gold', label: '暗金（刀/手套）' },
+]
 const inventoryCandidates = ref([])
 const result = ref(null)
 const lastError = ref('')
@@ -97,7 +106,7 @@ const searchTargets = async (name = '', { notify = true } = {}) => {
   loadingTargets.value = true
   try {
     targetOptions.value = (await searchFloatTargetsApi(
-      { collection: selectedCollection.value, name },
+      { collection: selectedCollection.value, name, rarity: selectedRarity.value },
       props.accountId,
     )).map(normalizeTarget)
   } catch (error) {
@@ -119,6 +128,10 @@ const loadCollections = async () => {
 }
 
 const onCollectionChange = () => {
+  searchTargets('', { notify: false })
+}
+
+const onRarityChange = () => {
   searchTargets('', { notify: false })
 }
 
@@ -476,6 +489,23 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
                 :key="idx"
                 :label="col.zh || col.en"
                 :value="col.zh || col.en"
+              />
+            </el-select>
+          </label>
+
+          <label class="control-field">
+            <span>稀有度</span>
+            <el-select
+              v-model="selectedRarity"
+              clearable
+              placeholder="按稀有度筛选（可选）"
+              @change="onRarityChange"
+            >
+              <el-option
+                v-for="opt in rarityOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
               />
             </el-select>
           </label>

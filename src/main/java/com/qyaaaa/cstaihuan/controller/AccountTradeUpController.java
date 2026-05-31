@@ -52,10 +52,11 @@ public class AccountTradeUpController {
     public List<FloatTargetOption> floatTargets(@PathVariable long accountId,
             @RequestParam(required = false) String collection,
             @RequestParam(required = false) String name,
+            @RequestParam(required = false) String rarity,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "40") int limit) {
         String effectiveName = (name != null && !name.trim().isEmpty()) ? name : keyword;
-        return floatCalculationService.searchTargets(collection, effectiveName, limit);
+        return floatCalculationService.searchTargets(collection, effectiveName, rarity, limit);
     }
 
     @GetMapping("/float/collections")

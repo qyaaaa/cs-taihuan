@@ -46,8 +46,8 @@ public class CatalogService {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
-    // Field-scoped search: collection and/or name filtered independently (AND).
-    public List<CatalogSkin> searchTargets(String collection, String name, int limit) {
+    // Field-scoped search: collection / name / rarity filtered independently (AND).
+    public List<CatalogSkin> searchTargets(String collection, String name, String rarity, int limit) {
         int normalizedLimit = Math.max(1, Math.min(limit, 100));
         StringBuilder sql = new StringBuilder(
             "SELECT " + CATALOG_COLUMNS + " FROM catalog_skin WHERE goods_id IS NOT NULL AND goods_id <> ''");
@@ -59,6 +59,10 @@ public class CatalogService {
         if (name != null && !name.trim().isEmpty()) {
             sql.append(" AND name LIKE ?");
             args.add("%" + name.trim() + "%");
+        }
+        if (rarity != null && !rarity.trim().isEmpty()) {
+            sql.append(" AND rarity = ?");
+            args.add(rarity.trim());
         }
         sql.append(" ORDER BY price DESC, name ASC LIMIT ?");
         args.add(Integer.valueOf(normalizedLimit));

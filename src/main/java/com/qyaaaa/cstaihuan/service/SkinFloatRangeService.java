@@ -2,6 +2,7 @@ package com.qyaaaa.cstaihuan.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qyaaaa.cstaihuan.model.SkinFloatRange;
+import com.qyaaaa.cstaihuan.util.SkinRarity;
 import com.qyaaaa.cstaihuan.util.WearSuffix;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -77,6 +78,9 @@ public class SkinFloatRangeService {
         for (SkinFloatRange row : rows) {
             row.setBaseNameEn(WearSuffix.toMatchKey(row.getNameEn()));
             row.setBaseNameZh(WearSuffix.toMatchKey(row.getNameZh()));
+            // Normalize the source rarity into the trade-up scheme so it matches catalog_skin
+            // and rarity filtering works (knives/gloves -> gold by weapon).
+            row.setRarity(SkinRarity.normalize(row.getRarity(), row.getWeapon()));
         }
         jdbcTemplate.update("DELETE FROM skin_float_range");
         if (!rows.isEmpty()) {
@@ -140,8 +144,8 @@ public class SkinFloatRangeService {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
-    /** Field-scoped search by collection and/or name keyword. */
-    public List<SkinFloatRange> search(String collection, String name, int limit) {
+    /** Field-scoped search by collection / name keyword / rarity. */
+    public List<SkinFloatRange> search(String collection, String name, String rarity, int limit) {
         int normalizedLimit = Math.max(1, Math.min(limit, 100));
         StringBuilder sql = new StringBuilder("SELECT * FROM skin_float_range WHERE 1=1");
         List<Object> args = new ArrayList<Object>();
@@ -156,6 +160,10 @@ public class SkinFloatRangeService {
             String p = "%" + name.trim() + "%";
             args.add(p);
             args.add(p);
+        }
+        if (StringUtils.hasText(rarity)) {
+            sql.append(" AND rarity = ?");
+            args.add(rarity.trim());
         }
         sql.append(" ORDER BY name_en ASC LIMIT ?");
         args.add(Integer.valueOf(normalizedLimit));
