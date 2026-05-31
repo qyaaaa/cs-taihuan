@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS skin_float_range (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    skin_id VARCHAR(64) NOT NULL COMMENT '数据集稳定 id（ByMykel/CSGO-API），用于幂等导入',
+    paint_index VARCHAR(32) NULL COMMENT 'paint kit 编号，便于将来按 id 精确匹配',
+    name_en VARCHAR(255) NULL COMMENT '英文饰品名（基础名，不含磨损后缀）',
+    name_zh VARCHAR(255) NULL COMMENT '中文饰品名（基础名）',
+    base_name_en VARCHAR(255) NULL COMMENT '规范化英文基础名，主匹配键',
+    base_name_zh VARCHAR(255) NULL COMMENT '规范化中文基础名，辅助匹配键',
+    weapon VARCHAR(128) NULL COMMENT '武器/类别名',
+    rarity VARCHAR(64) NULL COMMENT '稀有度',
+    min_float DOUBLE NOT NULL COMMENT '最小磨损值',
+    max_float DOUBLE NOT NULL COMMENT '最大磨损值',
+    collection_en VARCHAR(255) NULL COMMENT '英文收藏品名',
+    collection_zh VARCHAR(255) NULL COMMENT '中文收藏品名',
+    source VARCHAR(64) NOT NULL DEFAULT 'csgo-api' COMMENT '数据来源',
+    updated_at BIGINT NOT NULL COMMENT '更新时间戳',
+    UNIQUE KEY uk_skin_float_skin_id (skin_id),
+    KEY idx_skin_float_base_name_en (base_name_en),
+    KEY idx_skin_float_base_name_zh (base_name_zh),
+    KEY idx_skin_float_collection_en (collection_en),
+    KEY idx_skin_float_collection_zh (collection_zh)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='全量皮肤磨损范围基准库';

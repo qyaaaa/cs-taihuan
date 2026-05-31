@@ -350,7 +350,17 @@ stateDiagram-v2
 - StatTrak 隐秘输入只允许使用可通向暗金刀的下级。
 - 暗金手套下级无法参与汰换，不能和暗金刀下级混入同一份合同。
 
-## 10. 常见问题
+## 10. 特殊磨损计算器与磨损范围基准库
+
+磨损页按目标产物自身的 Min/Max Float 反推下级素材需要的平均磨损。为保证任意皮肤都有可靠的磨损范围，项目内置了一份**全量皮肤磨损范围基准库**。
+
+- 数据来源：开源数据集 [ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) 的中英文 `skins.json`，按皮肤 `id` 合并出双语名 + 共享的 `min/max float`，精简快照内置在 `src/main/resources/data/skin-float-range.json`，**完全离线**，不依赖运行时联网。
+- 存储与导入：导入到独立表 `skin_float_range`；表为空时启动自动 seed，也可手动 `POST /api/skin-float-range/import` 重导，`GET /api/skin-float-range/stats` 查看条数。
+- 磨损范围取值优先级：BUFF 目录真实值 → 基准库（当目录缺失或退化成 `0.0~1.0` 时）→ 都没有则报错（不再用错误的 `0~1` 默认值算出错误结果）。
+- 目标搜索：支持**按收藏品 + 按名称分字段搜索**，覆盖范围为「BUFF 目录 ∪ 基准库」，因此没同步过目录、但基准库里有的皮肤也能作为计算目标。结果会标注磨损范围来源（目录 / 基准库）。
+- 更新数据：从数据源重新拉取中英文 `skins.json`，合并生成精简快照替换内置文件后，调用 `/api/skin-float-range/import` 重导即可。
+
+## 11. 常见问题
 
 ### 为什么库存页没有数据？
 
@@ -378,7 +388,7 @@ stateDiagram-v2
 
 旧库存快照不会自动补齐新字段。字段逻辑调整后，需要重新抓取库存。
 
-## 11. 相关文档
+## 12. 相关文档
 
 - [汰换规则](trade-up-rules.md)
 - [BUFF 饰品字段样例](buff-item-sample.md)

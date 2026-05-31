@@ -48,8 +48,17 @@ public class TradeUpController {
     }
 
     @GetMapping("/float/targets")
-    public List<FloatTargetOption> floatTargets(@RequestParam(required = false) String keyword, @RequestParam(defaultValue = "40") int limit) {
-        return floatCalculationService.searchTargets(keyword, limit);
+    public List<FloatTargetOption> floatTargets(@RequestParam(required = false) String collection,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "40") int limit) {
+        String effectiveName = (name != null && !name.trim().isEmpty()) ? name : keyword;
+        return floatCalculationService.searchTargets(collection, effectiveName, limit);
+    }
+
+    @GetMapping("/float/collections")
+    public List<java.util.Map<String, String>> floatCollections() {
+        return floatCalculationService.listCollections();
     }
 
     @PostMapping("/float/calculate")

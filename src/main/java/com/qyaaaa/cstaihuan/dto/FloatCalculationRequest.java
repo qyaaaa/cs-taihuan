@@ -13,8 +13,11 @@ import lombok.Data;
 
 @Data
 public class FloatCalculationRequest {
-    @NotBlank(message = ErrorMessages.TARGET_GOODS_ID_NOT_BLANK)
+    // Either targetGoodsId (BUFF catalog) or targetName (float-range library) must be provided.
     private String targetGoodsId;
+
+    // Used when the target only exists in the float-range library (no BUFF goods_id).
+    private String targetName;
 
     @NotNull(message = ErrorMessages.TARGET_FLOAT_REQUIRED)
     @DecimalMin(value = "0.0", inclusive = true, message = ErrorMessages.TARGET_FLOAT_MIN)

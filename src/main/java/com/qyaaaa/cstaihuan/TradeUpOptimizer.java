@@ -17,18 +17,6 @@ import java.util.Set;
 
 public final class TradeUpOptimizer {
     private static final String KEY_SEPARATOR = "||";
-    private static final String[] WEAR_SUFFIXES = new String[] {
-        " (Factory New)",
-        " (Minimal Wear)",
-        " (Field-Tested)",
-        " (Well-Worn)",
-        " (Battle-Scarred)",
-        " (崭新出厂)",
-        " (略有磨损)",
-        " (久经沙场)",
-        " (破损不堪)",
-        " (战痕累累)"
-    };
     private static final String[] GLOVE_KEYWORDS = new String[] {
         "glove",
         "hand wrap",
@@ -591,16 +579,7 @@ public final class TradeUpOptimizer {
 
     // 去掉中英文磨损后缀，把同一皮肤的五个磨损档合并成一个产物 family。
     private static String baseSkinName(String name) {
-        if (name == null) {
-            return "";
-        }
-        String trimmed = name.trim();
-        for (String suffix : WEAR_SUFFIXES) {
-            if (trimmed.endsWith(suffix)) {
-                return trimmed.substring(0, trimmed.length() - suffix.length()).trim();
-            }
-        }
-        return trimmed;
+        return com.qyaaaa.cstaihuan.util.WearSuffix.stripWearSuffix(name);
     }
 
     private static int mapCapacity(int expectedSize) {

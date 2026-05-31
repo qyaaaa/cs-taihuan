@@ -5,10 +5,16 @@ import com.qyaaaa.cstaihuan.dto.FloatCalculationResponse;
 import com.qyaaaa.cstaihuan.dto.FloatTargetOption;
 import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
+import com.qyaaaa.cstaihuan.model.SkinFloatRange;
+import com.qyaaaa.cstaihuan.util.WearSuffix;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class FloatCalculationService {
@@ -16,34 +22,63 @@ public class FloatCalculationService {
     private static final Locale FORMAT_LOCALE = Locale.ROOT;
 
     private final CatalogService catalogService;
+    private final SkinFloatRangeService skinFloatRangeService;
 
-    public FloatCalculationService(CatalogService catalogService) {
+    public FloatCalculationService(CatalogService catalogService, SkinFloatRangeService skinFloatRangeService) {
         this.catalogService = catalogService;
+        this.skinFloatRangeService = skinFloatRangeService;
     }
 
-    public List<FloatTargetOption> searchTargets(String keyword, int limit) {
-        List<CatalogSkin> skins = catalogService.searchTargets(keyword, limit);
-        List<FloatTargetOption> options = new ArrayList<FloatTargetOption>();
-        for (CatalogSkin skin : skins) {
-            options.add(toOption(skin));
+    /** Field-scoped target search merging BUFF catalog (preferred) with the float-range library. */
+    public List<FloatTargetOption> searchTargets(String collection, String name, int limit) {
+        Map<String, FloatTargetOption> byKey = new LinkedHashMap<String, FloatTargetOption>();
+        for (CatalogSkin skin : catalogService.searchTargets(collection, name, limit)) {
+            FloatTargetOption option = toOption(skin);
+            if (isDefaultRange(option.getMinFloat(), option.getMaxFloat())) {
+                Optional<SkinFloatRange> r = skinFloatRangeService.findByName(skin.getName());
+                if (r.isPresent()) {
+                    option.setMinFloat(r.get().getMinFloat());
+                    option.setMaxFloat(r.get().getMaxFloat());
+                }
+            }
+            byKey.put(WearSuffix.toMatchKey(skin.getName()), option);
         }
-        return options;
+        for (SkinFloatRange row : skinFloatRangeService.search(collection, name, limit)) {
+            String key = StringUtils.hasText(row.getBaseNameEn()) ? row.getBaseNameEn() : WearSuffix.toMatchKey(row.getNameEn());
+            if (!byKey.containsKey(key)) {
+                byKey.put(key, toOption(row));
+            }
+        }
+        List<FloatTargetOption> all = new ArrayList<FloatTargetOption>(byKey.values());
+        int normalizedLimit = Math.max(1, Math.min(limit, 100));
+        return all.size() > normalizedLimit ? new ArrayList<FloatTargetOption>(all.subList(0, normalizedLimit)) : all;
+    }
+
+    /** Distinct collections (zh/en) for the search dropdown. */
+    public List<Map<String, String>> listCollections() {
+        List<Map<String, String>> result = new ArrayList<Map<String, String>>();
+        for (String[] row : skinFloatRangeService.listCollections()) {
+            Map<String, String> item = new java.util.HashMap<String, String>();
+            item.put("zh", row[0]);
+            item.put("en", row[1]);
+            result.add(item);
+        }
+        return result;
     }
 
     /**
      * 反推目标产物磨损需要的素材平均磨损，并在用户锁定部分素材后计算剩余槽位的平均磨损约束。
      */
     public FloatCalculationResponse calculate(FloatCalculationRequest request) {
-        CatalogSkin target = catalogService.findByGoodsId(request.getTargetGoodsId().trim())
-            .orElseThrow(() -> new IllegalArgumentException(ErrorMessages.catalogSkinNotFound(request.getTargetGoodsId())));
-        int contractSize = normalizeContractSize(request.getContractSize(), target.getRarity());
+        ResolvedTarget target = resolveTarget(request);
+        int contractSize = normalizeContractSize(request.getContractSize(), target.rarity);
         List<Double> lockedInputFloats = request.getLockedInputFloats();
         if (lockedInputFloats != null && lockedInputFloats.size() > contractSize) {
             throw new IllegalArgumentException(ErrorMessages.LOCKED_INPUT_FLOAT_SIZE);
         }
 
-        double targetMinFloat = target.getMinFloat();
-        double targetMaxFloat = target.getMaxFloat();
+        double targetMinFloat = target.minFloat;
+        double targetMaxFloat = target.maxFloat;
         double targetRange = targetMaxFloat - targetMinFloat;
         if (targetRange <= 0d) {
             throw new IllegalArgumentException(ErrorMessages.targetFloatOutOfRange(targetMinFloat, targetMaxFloat));
@@ -65,11 +100,11 @@ public class FloatCalculationService {
             && remainingTotal <= remainingSlots + EPSILON;
 
         FloatCalculationResponse response = new FloatCalculationResponse();
-        response.setTargetGoodsId(target.getGoodsId());
-        response.setTargetName(target.getName());
-        response.setTargetCollection(target.getCollection());
-        response.setTargetRarity(target.getRarity());
-        response.setTargetQualityLabel(target.getQualityLabel());
+        response.setTargetGoodsId(target.goodsId);
+        response.setTargetName(target.name);
+        response.setTargetCollection(target.collection);
+        response.setTargetRarity(target.rarity);
+        response.setTargetQualityLabel(target.qualityLabel);
         response.setTargetFloat(targetFloat);
         response.setTargetMinFloat(targetMinFloat);
         response.setTargetMaxFloat(targetMaxFloat);
@@ -163,7 +198,111 @@ public class FloatCalculationService {
         option.setMinFloat(skin.getMinFloat());
         option.setMaxFloat(skin.getMaxFloat());
         option.setPrice(skin.getPrice());
+        option.setFloatSource("catalog");
         return option;
+    }
+
+    private FloatTargetOption toOption(SkinFloatRange row) {
+        FloatTargetOption option = new FloatTargetOption();
+        option.setGoodsId(null);
+        option.setName(StringUtils.hasText(row.getNameZh()) ? row.getNameZh() : row.getNameEn());
+        option.setCollection(StringUtils.hasText(row.getCollectionZh()) ? row.getCollectionZh() : row.getCollectionEn());
+        option.setRarity(mapRarity(row));
+        option.setQualityLabel(null);
+        option.setMinFloat(row.getMinFloat());
+        option.setMaxFloat(row.getMaxFloat());
+        option.setPrice(0d);
+        option.setFloatSource("library");
+        return option;
+    }
+
+    // Resolves the target's wear range, preferring the BUFF catalog (with goods_id/price) and
+    // falling back to the float-range library — both to correct a 0~1 fallback and to support
+    // targets that only exist in the library.
+    private ResolvedTarget resolveTarget(FloatCalculationRequest request) {
+        String goodsId = request.getTargetGoodsId();
+        if (StringUtils.hasText(goodsId)) {
+            CatalogSkin c = catalogService.findByGoodsId(goodsId.trim())
+                .orElseThrow(() -> new IllegalArgumentException(ErrorMessages.catalogSkinNotFound(goodsId)));
+            ResolvedTarget t = new ResolvedTarget();
+            t.goodsId = c.getGoodsId();
+            t.name = c.getName();
+            t.collection = c.getCollection();
+            t.rarity = c.getRarity();
+            t.qualityLabel = c.getQualityLabel();
+            t.minFloat = c.getMinFloat();
+            t.maxFloat = c.getMaxFloat();
+            if (isDefaultRange(t.minFloat, t.maxFloat)) {
+                Optional<SkinFloatRange> r = skinFloatRangeService.findByName(c.getName());
+                if (r.isPresent()) {
+                    t.minFloat = r.get().getMinFloat();
+                    t.maxFloat = r.get().getMaxFloat();
+                }
+            }
+            return t;
+        }
+        String name = request.getTargetName();
+        if (StringUtils.hasText(name)) {
+            SkinFloatRange r = skinFloatRangeService.findByName(name)
+                .orElseThrow(() -> new IllegalArgumentException(ErrorMessages.catalogSkinNotFound(name)));
+            ResolvedTarget t = new ResolvedTarget();
+            t.goodsId = null;
+            t.name = StringUtils.hasText(r.getNameZh()) ? r.getNameZh() : r.getNameEn();
+            t.collection = StringUtils.hasText(r.getCollectionZh()) ? r.getCollectionZh() : r.getCollectionEn();
+            t.rarity = mapRarity(r);
+            t.qualityLabel = null;
+            t.minFloat = r.getMinFloat();
+            t.maxFloat = r.getMaxFloat();
+            return t;
+        }
+        throw new IllegalArgumentException(ErrorMessages.TARGET_GOODS_ID_NOT_BLANK);
+    }
+
+    private boolean isDefaultRange(double min, double max) {
+        return min <= EPSILON && max >= 1d - EPSILON;
+    }
+
+    // Maps the library's rarity/weapon to the trade-up rarity scheme used for contract sizing.
+    private String mapRarity(SkinFloatRange row) {
+        String rarity = row.getRarity() == null ? "" : row.getRarity().trim().toLowerCase();
+        String weapon = row.getWeapon() == null ? "" : row.getWeapon().trim().toLowerCase();
+        if (rarity.contains("extraordinary") || isKnifeOrGlove(weapon)) {
+            return "gold";
+        }
+        if (rarity.contains("covert")) {
+            return "covert";
+        }
+        if (rarity.contains("classified")) {
+            return "classified";
+        }
+        if (rarity.contains("restricted")) {
+            return "restricted";
+        }
+        if (rarity.contains("mil-spec") || rarity.contains("mil spec")) {
+            return "mil-spec";
+        }
+        if (rarity.contains("industrial")) {
+            return "industrial";
+        }
+        if (rarity.contains("consumer")) {
+            return "consumer";
+        }
+        return rarity;
+    }
+
+    private boolean isKnifeOrGlove(String weapon) {
+        return weapon.contains("knife") || weapon.contains("glove") || weapon.contains("hand wrap")
+            || weapon.contains("karambit") || weapon.contains("bayonet") || weapon.contains("daggers");
+    }
+
+    private static final class ResolvedTarget {
+        private String goodsId;
+        private String name;
+        private String collection;
+        private String rarity;
+        private String qualityLabel;
+        private double minFloat;
+        private double maxFloat;
     }
 
     private static final class LockedFloats {

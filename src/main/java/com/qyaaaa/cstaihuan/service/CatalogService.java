@@ -46,6 +46,25 @@ public class CatalogService {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
+    // Field-scoped search: collection and/or name filtered independently (AND).
+    public List<CatalogSkin> searchTargets(String collection, String name, int limit) {
+        int normalizedLimit = Math.max(1, Math.min(limit, 100));
+        StringBuilder sql = new StringBuilder(
+            "SELECT " + CATALOG_COLUMNS + " FROM catalog_skin WHERE goods_id IS NOT NULL AND goods_id <> ''");
+        List<Object> args = new java.util.ArrayList<Object>();
+        if (collection != null && !collection.trim().isEmpty()) {
+            sql.append(" AND collection_name LIKE ?");
+            args.add("%" + collection.trim() + "%");
+        }
+        if (name != null && !name.trim().isEmpty()) {
+            sql.append(" AND name LIKE ?");
+            args.add("%" + name.trim() + "%");
+        }
+        sql.append(" ORDER BY price DESC, name ASC LIMIT ?");
+        args.add(Integer.valueOf(normalizedLimit));
+        return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> mapCatalogSkin(rs), args.toArray());
+    }
+
     public List<CatalogSkin> searchTargets(String keyword, int limit) {
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         int normalizedLimit = Math.max(1, Math.min(limit, 100));
