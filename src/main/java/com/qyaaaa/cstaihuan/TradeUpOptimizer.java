@@ -617,19 +617,35 @@ public final class TradeUpOptimizer {
             if (variants.isEmpty()) {
                 return null;
             }
-            CatalogSkin fallback = variants.get(0);
-            double fallbackDistance = Double.MAX_VALUE;
+            // Pick the exterior by the standard CS wear tier of the computed float, matched
+            // against each variant's name suffix. BUFF's per-exterior paintwear_range is
+            // sometimes the skin's whole range, so we can't trust variant min/max here.
+            int targetTier = com.qyaaaa.cstaihuan.util.WearSuffix.wearTierForFloat(floatValue);
+            CatalogSkin tierFallback = null;
+            int bestTierDistance = Integer.MAX_VALUE;
+            CatalogSkin rangeFallback = variants.get(0);
+            double bestRangeDistance = Double.MAX_VALUE;
             for (CatalogSkin variant : variants) {
-                if (floatValue >= variant.getMinFloat() && floatValue <= variant.getMaxFloat()) {
+                int variantTier = com.qyaaaa.cstaihuan.util.WearSuffix.wearTierOfName(variant.getName());
+                if (variantTier == targetTier) {
                     return variant;
                 }
-                double distance = Math.min(Math.abs(floatValue - variant.getMinFloat()), Math.abs(floatValue - variant.getMaxFloat()));
-                if (distance < fallbackDistance) {
-                    fallbackDistance = distance;
-                    fallback = variant;
+                if (variantTier >= 0) {
+                    int tierDistance = Math.abs(variantTier - targetTier);
+                    if (tierDistance < bestTierDistance) {
+                        bestTierDistance = tierDistance;
+                        tierFallback = variant;
+                    }
+                }
+                double rangeDistance = Math.min(Math.abs(floatValue - variant.getMinFloat()), Math.abs(floatValue - variant.getMaxFloat()));
+                if (rangeDistance < bestRangeDistance) {
+                    bestRangeDistance = rangeDistance;
+                    rangeFallback = variant;
                 }
             }
-            return fallback;
+            // Prefer the closest named exterior; fall back to the nearest-range variant only
+            // when no variant carries a recognizable wear suffix.
+            return tierFallback != null ? tierFallback : rangeFallback;
         }
 
         // BUFF/CS 数据里手套分类和名称可能中英文混杂，所以同时检查分类 key 和基础名称。
