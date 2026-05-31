@@ -13,6 +13,7 @@ import com.qyaaaa.cstaihuan.dto.QrLoginStartResponse;
 import com.qyaaaa.cstaihuan.dto.QrLoginStatusResponse;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Iterator;
 import java.util.List;
@@ -51,7 +52,7 @@ public class BuffQrLoginService {
             playwright = Playwright.create();
             browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                 .setHeadless(true)
-                .setArgs(List.of(
+                .setArgs(Arrays.asList(
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
