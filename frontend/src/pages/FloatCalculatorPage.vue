@@ -132,6 +132,11 @@ const onCollectionChange = () => {
 }
 
 const onRarityChange = () => {
+  // Knives/gloves (gold) have no collection; clear & disable the collection filter
+  // so the two conditions don't conflict into an empty result.
+  if (selectedRarity.value === 'gold') {
+    selectedCollection.value = ''
+  }
   searchTargets('', { notify: false })
 }
 
@@ -476,12 +481,22 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
 
         <div class="float-form-grid">
           <label class="control-field">
-            <span>收藏品</span>
+            <span>
+              收藏品
+              <el-tooltip
+                v-if="selectedRarity === 'gold'"
+                content="刀和手套不属于任何收藏品，选择暗金档位时收藏品筛选不可用"
+                placement="top"
+              >
+                <span class="field-hint">ⓘ 不适用</span>
+              </el-tooltip>
+            </span>
             <el-select
               v-model="selectedCollection"
               filterable
               clearable
-              placeholder="按收藏品筛选（可选）"
+              :disabled="selectedRarity === 'gold'"
+              :placeholder="selectedRarity === 'gold' ? '刀 / 手套不区分收藏品' : '按收藏品筛选（可选）'"
               @change="onCollectionChange"
             >
               <el-option
@@ -949,6 +964,12 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
 }
 .float-slot-grid.compact {
   grid-template-columns: repeat(5, minmax(170px, 1fr));
+}
+.field-hint {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-muted, #8a93a3);
+  cursor: help;
 }
 
 /* ---- Slot card ---- */
