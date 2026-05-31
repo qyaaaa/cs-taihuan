@@ -11,6 +11,7 @@ import com.qyaaaa.cstaihuan.dto.FloatCalculationResponse;
 import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import com.qyaaaa.cstaihuan.service.CatalogService;
+import com.qyaaaa.cstaihuan.service.SkinFloatRangeService;
 import com.qyaaaa.cstaihuan.service.FloatCalculationService;
 import java.util.Arrays;
 import java.util.Optional;
@@ -83,7 +84,9 @@ class FloatCalculationServiceTest {
     private static FloatCalculationService serviceWithTarget(CatalogSkin target) {
         CatalogService catalogService = Mockito.mock(CatalogService.class);
         when(catalogService.findByGoodsId(anyString())).thenReturn(Optional.of(target));
-        return new FloatCalculationService(catalogService);
+        SkinFloatRangeService skinFloatRangeService = Mockito.mock(SkinFloatRangeService.class);
+        Mockito.lenient().when(skinFloatRangeService.findByName(anyString())).thenReturn(Optional.empty());
+        return new FloatCalculationService(catalogService, skinFloatRangeService);
     }
 
     private static FloatCalculationRequest request(int contractSize, double targetFloat, Double... lockedFloats) {

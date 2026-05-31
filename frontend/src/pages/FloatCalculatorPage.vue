@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { loadInventoryPage } from '../api/inventory'
-import { calculateFloatApi, searchFloatTargetsApi } from '../api/tradeUp'
+import { calculateFloatApi, listFloatCollectionsApi, searchFloatTargetsApi } from '../api/tradeUp'
 
 const props = defineProps({
   accountId: {
@@ -19,6 +19,17 @@ const loadingTargets = ref(false)
 const loadingInventoryCandidates = ref(false)
 const calculating = ref(false)
 const targetOptions = ref([])
+const collectionOptions = ref([])
+const selectedCollection = ref('')
+const selectedRarity = ref('')
+const rarityOptions = [
+  { value: '', label: '全部档位' },
+  { value: 'mil-spec', label: '军规级（蓝）' },
+  { value: 'restricted', label: '受限（紫）' },
+  { value: 'classified', label: '保密（粉）' },
+  { value: 'covert', label: '隐秘（红）' },
+  { value: 'gold', label: '暗金（刀/手套）' },
+]
 const inventoryCandidates = ref([])
 const result = ref(null)
 const lastError = ref('')
@@ -32,14 +43,15 @@ const createSlot = () => ({
 })
 
 const form = reactive({
-  targetGoodsId: '',
+  // Stable selection key: goods_id for catalog items, name for library-only items.
+  targetKey: '',
   targetFloat: 0.05201314,
   contractSize: 10,
   slots: Array.from({ length: 10 }, createSlot),
 })
 
 const visibleSlots = computed(() => form.slots.slice(0, form.contractSize))
-const selectedTarget = computed(() => targetOptions.value.find((item) => item.goodsId === form.targetGoodsId) || null)
+const selectedTarget = computed(() => targetOptions.value.find((item) => item.key === form.targetKey) || null)
 const expectedContractSize = computed(() => selectedTarget.value?.rarity === 'gold' ? 5 : 10)
 const inputRarity = computed(() => previousRarity(selectedTarget.value?.rarity))
 const contractSizeOptions = computed(() => [
@@ -52,7 +64,7 @@ const lockedCount = computed(() => visibleSlots.value.filter((slot) => hasSlotVa
 const inventoryLockedCount = computed(() => visibleSlots.value.filter((slot) => slot.mode === 'inventory' && hasSlotValue(slot)).length)
 const manualLockedCount = computed(() => visibleSlots.value.filter((slot) => slot.mode === 'manual' && hasSlotValue(slot)).length)
 const automaticSlotCount = computed(() => form.contractSize - lockedCount.value)
-const canCalculate = computed(() => Boolean(form.targetGoodsId && form.targetFloat !== null && form.targetFloat !== ''))
+const canCalculate = computed(() => Boolean(form.targetKey && form.targetFloat !== null && form.targetFloat !== ''))
 const inventoryItemsByAssetId = computed(() => {
   const map = new Map()
   inventoryCandidates.value.forEach((item) => {
@@ -90,10 +102,13 @@ const inventoryCandidateNote = computed(() => {
   return '当前没有库存快照，可先手动填写磨损；导入会话并抓取库存后可选择库存饰品。'
 })
 
-const searchTargets = async (keyword = '', { notify = true } = {}) => {
+const searchTargets = async (name = '', { notify = true } = {}) => {
   loadingTargets.value = true
   try {
-    targetOptions.value = (await searchFloatTargetsApi(keyword, props.accountId)).map(normalizeTarget)
+    targetOptions.value = (await searchFloatTargetsApi(
+      { collection: selectedCollection.value, name, rarity: selectedRarity.value },
+      props.accountId,
+    )).map(normalizeTarget)
   } catch (error) {
     targetOptions.value = []
     if (notify) {
@@ -102,6 +117,27 @@ const searchTargets = async (keyword = '', { notify = true } = {}) => {
   } finally {
     loadingTargets.value = false
   }
+}
+
+const loadCollections = async () => {
+  try {
+    collectionOptions.value = await listFloatCollectionsApi(props.accountId)
+  } catch (error) {
+    collectionOptions.value = []
+  }
+}
+
+const onCollectionChange = () => {
+  searchTargets('', { notify: false })
+}
+
+const onRarityChange = () => {
+  // Knives/gloves (gold) have no collection; clear & disable the collection filter
+  // so the two conditions don't conflict into an empty result.
+  if (selectedRarity.value === 'gold') {
+    selectedCollection.value = ''
+  }
+  searchTargets('', { notify: false })
 }
 
 const loadInventoryCandidates = async ({ notify = false } = {}) => {
@@ -163,7 +199,8 @@ const calculate = async ({ silent = false } = {}) => {
   lastError.value = ''
   try {
     result.value = normalizeResult(await calculateFloatApi({
-      targetGoodsId: form.targetGoodsId,
+      targetGoodsId: selectedTarget.value?.goodsId || undefined,
+      targetName: selectedTarget.value?.goodsId ? undefined : selectedTarget.value?.name,
       targetFloat: Number(form.targetFloat),
       contractSize: form.contractSize,
       lockedInputFloats: visibleSlots.value.map(slotFloat),
@@ -218,7 +255,7 @@ const handleSlotModeChange = (slot, mode) => {
 
 watch(
   () => [
-    form.targetGoodsId,
+    form.targetKey,
     form.targetFloat,
     form.contractSize,
     visibleSlots.value.map((slot) => `${slot.mode}:${slot.manualFloat ?? ''}:${slot.inventoryAssetId ?? ''}`).join('|'),
@@ -240,6 +277,8 @@ watch(
   () => props.accountId,
   () => {
     result.value = null
+    selectedCollection.value = ''
+    loadCollections()
     searchTargets('', { notify: false })
     loadInventoryCandidates()
   }
@@ -253,17 +292,24 @@ watch(
 )
 
 onMounted(() => {
+  loadCollections()
   searchTargets('', { notify: false })
   loadInventoryCandidates()
 })
 
-const normalizeTarget = (target) => ({
-  ...target,
-  goodsId: target.goodsId || target.goods_id,
-  rarity: target.rarity,
-  minFloat: numberValue(target.minFloat, target.min_float),
-  maxFloat: numberValue(target.maxFloat, target.max_float),
-})
+const normalizeTarget = (target) => {
+  const goodsId = target.goodsId || target.goods_id || ''
+  return {
+    ...target,
+    goodsId,
+    // Stable selection key: goods_id when available, otherwise the (unique) name.
+    key: goodsId || target.name,
+    floatSource: target.floatSource || target.float_source || 'catalog',
+    rarity: target.rarity,
+    minFloat: numberValue(target.minFloat, target.min_float),
+    maxFloat: numberValue(target.maxFloat, target.max_float),
+  }
+}
 
 const normalizeResult = (payload) => ({
   ...payload,
@@ -434,26 +480,71 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
         </p>
 
         <div class="float-form-grid">
+          <label class="control-field">
+            <span>
+              收藏品
+              <el-tooltip
+                v-if="selectedRarity === 'gold'"
+                content="刀和手套不属于任何收藏品，选择暗金档位时收藏品筛选不可用"
+                placement="top"
+              >
+                <span class="field-hint">ⓘ 不适用</span>
+              </el-tooltip>
+            </span>
+            <el-select
+              v-model="selectedCollection"
+              filterable
+              clearable
+              :disabled="selectedRarity === 'gold'"
+              :placeholder="selectedRarity === 'gold' ? '刀 / 手套不区分收藏品' : '按收藏品筛选（可选）'"
+              @change="onCollectionChange"
+            >
+              <el-option
+                v-for="(col, idx) in collectionOptions"
+                :key="idx"
+                :label="col.zh || col.en"
+                :value="col.zh || col.en"
+              />
+            </el-select>
+          </label>
+
+          <label class="control-field">
+            <span>稀有度</span>
+            <el-select
+              v-model="selectedRarity"
+              clearable
+              placeholder="按稀有度筛选（可选）"
+              @change="onRarityChange"
+            >
+              <el-option
+                v-for="opt in rarityOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+          </label>
+
           <label class="control-field wide">
             <span>目标饰品</span>
             <el-select
-              v-model="form.targetGoodsId"
+              v-model="form.targetKey"
               filterable
               remote
               clearable
               reserve-keyword
-              placeholder="搜索名称 / goods_id / 收藏品"
+              placeholder="按名称搜索产物"
               :remote-method="searchTargets"
               :loading="loadingTargets"
             >
               <el-option
                 v-for="target in targetOptions"
-                :key="target.goodsId"
+                :key="target.key"
                 :label="displayTargetName(target)"
-                :value="target.goodsId"
+                :value="target.key"
               >
                 <span>{{ displayTargetName(target) }}</span>
-                <small>{{ target.collection }} · {{ formatFloat(target.minFloat) }} ~ {{ formatFloat(target.maxFloat) }}</small>
+                <small>{{ target.collection || '未知收藏品' }} · {{ formatFloat(target.minFloat) }} ~ {{ formatFloat(target.maxFloat) }}<template v-if="target.floatSource === 'library'"> · 基准库</template></small>
               </el-option>
             </el-select>
           </label>
@@ -873,6 +964,12 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
 }
 .float-slot-grid.compact {
   grid-template-columns: repeat(5, minmax(170px, 1fr));
+}
+.field-hint {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-muted, #8a93a3);
+  cursor: help;
 }
 
 /* ---- Slot card ---- */

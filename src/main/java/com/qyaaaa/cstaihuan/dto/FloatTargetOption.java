@@ -12,4 +12,6 @@ public class FloatTargetOption {
     private double minFloat;
     private double maxFloat;
     private double price;
+    // "catalog" = from BUFF catalog (has goods_id/price); "library" = float-range library only.
+    private String floatSource;
 }
