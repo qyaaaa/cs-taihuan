@@ -373,8 +373,8 @@ onMounted(async () => {
           <p class="page-description">{{ pageMeta.description }}</p>
         </div>
         <div class="session-compact" :class="{ active: session.sessionState.connected }">
-          <span>{{ currentAccount?.nickname || '默认账号' }} · {{ session.sessionState.connected ? 'BUFF 已托管' : 'BUFF 未登录' }}</span>
-          <strong>{{ session.sessionState.maskedCookie || 'No session' }}</strong>
+          <span>{{ session.sessionState.connected ? 'BUFF 已托管' : 'BUFF 未登录' }}</span>
+          <strong>{{ currentAccount?.nickname || '默认账号' }}</strong>
         </div>
       </header>
 

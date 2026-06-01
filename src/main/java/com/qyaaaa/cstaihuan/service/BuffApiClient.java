@@ -94,6 +94,8 @@ public class BuffApiClient {
 
     private BuffAccountProfile fetchAccountProfileFromProfileEndpoints(String baseUrl, String cookie) {
         String[] paths = new String[] {
+            // 返回 data.user_info.{nickname,id}，是目前唯一能拿到 BUFF 真实昵称的端点，放最前优先命中。
+            "/account/api/user/info/v2",
             "/api/account/info",
             "/api/user/info",
             "/api/user/profile",
