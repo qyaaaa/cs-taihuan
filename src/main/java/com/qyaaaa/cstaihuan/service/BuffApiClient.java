@@ -496,8 +496,10 @@ public class BuffApiClient {
                 stringValue(merged, "collection", "collection_name"),
                 fallbackCollection
             );
+        // 关联产物只接受本地化中文名；缺中文名时跳过，避免落库英文 market_hash_name 重复条目，
+        // 把同一皮肤的磨损档拆成两个产物 family 导致产出磨损算错。该 goods 仍会被自身详情接口正确补回。
         String name = firstNonBlank(
-            stringValue(merged, "name", "short_name", "market_hash_name")
+            stringValue(merged, "name", "short_name")
         );
         if (name == null || collection == null || rarity == null) {
             return null;
