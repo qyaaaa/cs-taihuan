@@ -18,7 +18,37 @@ public final class WearSuffix {
         " (战痕累累)"
     };
 
+    // Standard CS exterior tiers, indexed 0..4 (Factory New .. Battle-Scarred).
+    public static final int TIER_FACTORY_NEW = 0;
+    public static final int TIER_BATTLE_SCARRED = 4;
+    // Upper bounds (exclusive) for tiers 0..3; tier 4 covers the rest up to 1.0.
+    private static final double[] TIER_UPPER_BOUNDS = new double[] {0.07d, 0.15d, 0.38d, 0.45d};
+
     private WearSuffix() {
+    }
+
+    /** Maps an absolute float value to the standard CS exterior tier (0=Factory New .. 4=Battle-Scarred). */
+    public static int wearTierForFloat(double floatValue) {
+        for (int i = 0; i < TIER_UPPER_BOUNDS.length; i++) {
+            if (floatValue < TIER_UPPER_BOUNDS[i]) {
+                return i;
+            }
+        }
+        return TIER_BATTLE_SCARRED;
+    }
+
+    /** Returns the exterior tier encoded in a skin name's wear suffix, or -1 if it has none. */
+    public static int wearTierOfName(String name) {
+        if (name == null) {
+            return -1;
+        }
+        String trimmed = name.trim();
+        for (int i = 0; i < WEAR_SUFFIXES.length; i++) {
+            if (trimmed.endsWith(WEAR_SUFFIXES[i])) {
+                return i % 5;
+            }
+        }
+        return -1;
     }
 
     /** Removes a trailing exterior suffix (e.g. " (Field-Tested)" / " (久经沙场)"). */

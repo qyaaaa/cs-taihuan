@@ -24,13 +24,13 @@ buff:
   timeout-millis: 15000
   fetch-cooldown-seconds: 180
   catalog-sync:
-    request-interval-millis: 5000
+    request-interval-millis: 4000
     max-detail-requests-per-run: 0
     cache-fresh-millis: 3600000
     scheduled-enabled: true
     scheduled-initial-delay-millis: 60000
-    scheduled-fixed-delay-millis: 900000
-    scheduled-max-detail-requests-per-run: 30
+    scheduled-fixed-delay-millis: 120000
+    scheduled-max-detail-requests-per-run: 80
   session:
     storage-path: data/buff-session.json
 

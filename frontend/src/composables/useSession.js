@@ -144,9 +144,14 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
   const validateSession = async ({ silent = false } = {}) => {
     loadingSession.value = true
     try {
-      const payload = await validateSessionApi(resolveAccountId())
+      const requestedId = resolveAccountId()
+      const payload = await validateSessionApi(requestedId)
       normalizeSession(payload)
-      if (payload?.valid) {
+      // 后端可能因 buff_user_id 命中已有账号而合并并删除当前重复槽位：刷新列表并切到规范账号。
+      if (payload?.accountId && payload.accountId !== requestedId) {
+        await onAccountUpdated?.()
+        selectAccount?.(payload.accountId)
+      } else if (payload?.valid) {
         await onAccountUpdated?.()
         await restorePersistedInventory()
       }
