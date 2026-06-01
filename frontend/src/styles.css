@@ -273,6 +273,15 @@ button:focus-visible,
   background: rgba(91, 196, 138, 0.1);
 }
 
+.session-compact.offline {
+  border-color: rgba(240, 110, 110, 0.45);
+  background: rgba(240, 110, 110, 0.12);
+}
+
+.session-compact .session-relogin-btn {
+  margin-top: 10px;
+}
+
 .session-compact span,
 .session-compact strong {
   display: block;

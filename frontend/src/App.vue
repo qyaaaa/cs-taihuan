@@ -372,9 +372,16 @@ onMounted(async () => {
           <h1>{{ pageMeta.title }}</h1>
           <p class="page-description">{{ pageMeta.description }}</p>
         </div>
-        <div class="session-compact" :class="{ active: session.sessionState.connected }">
-          <span>{{ session.sessionState.connected ? 'BUFF 已托管' : 'BUFF 未登录' }}</span>
+        <div class="session-compact" :class="{ active: session.sessionState.connected, offline: currentAccount?.status === 'INVALID' }">
+          <span>{{ currentAccount?.status === 'INVALID' ? 'BUFF 已掉线' : (session.sessionState.connected ? 'BUFF 已托管' : 'BUFF 未登录') }}</span>
           <strong>{{ currentAccount?.nickname || '默认账号' }}</strong>
+          <el-button
+            v-if="currentAccount?.status === 'INVALID'"
+            size="small"
+            type="warning"
+            class="session-relogin-btn"
+            @click="openSessionDialog"
+          >重新扫码登录</el-button>
         </div>
       </header>
 

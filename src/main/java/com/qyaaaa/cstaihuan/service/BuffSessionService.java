@@ -5,6 +5,7 @@ import com.qyaaaa.cstaihuan.config.BuffProperties;
 import com.qyaaaa.cstaihuan.config.BuffSessionProperties;
 import com.qyaaaa.cstaihuan.dto.BuffSessionImportRequest;
 import com.qyaaaa.cstaihuan.dto.BuffSessionStatusResponse;
+import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
 import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.BuffAccountProfile;
 import com.qyaaaa.cstaihuan.model.BuffSessionRecord;
@@ -96,6 +97,9 @@ public class BuffSessionService {
             buffAccountService.updateImportedIdentity(accountId, profile.getNickname(), profile.getBuffUserId());
             buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "VALID", record.getLastValidatedAt());
             return new BuffSessionStatusResponse(true, true, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "BUFF 会话有效。");
+        } catch (BuffRateLimitException ex) {
+            // 限流是临时故障，不能据此判定会话失效，否则会把正常账号误标掉线。保持原状态，等下次再校验。
+            return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), ErrorMessages.BUFF_RATE_LIMIT);
         } catch (RuntimeException ex) {
             buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "INVALID", record.getLastValidatedAt());
             return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), ErrorMessages.BUFF_SESSION_VALIDATE_FAILED);
