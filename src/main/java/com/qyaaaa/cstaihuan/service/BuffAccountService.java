@@ -133,6 +133,21 @@ public class BuffAccountService {
         return rows.isEmpty() ? Optional.<BuffAccount>empty() : Optional.of(rows.get(0));
     }
 
+    // 按 BUFF 真实身份(buff_user_id)查找已有账号，排除指定的本地槽位；用于导入时识别同一个 BUFF 账号。
+    public Optional<BuffAccount> findOtherAccountByBuffUserId(String buffUserId, long excludeAccountId) {
+        String normalized = normalizeNullable(buffUserId);
+        if (normalized == null) {
+            return Optional.<BuffAccount>empty();
+        }
+        List<BuffAccount> rows = jdbcTemplate.query(
+            "SELECT id, nickname, buff_user_id, masked_cookie, status, last_validated_at, created_at, updated_at FROM buff_account WHERE buff_user_id = ? AND id <> ? ORDER BY id ASC LIMIT 1",
+            (rs, rowNum) -> mapAccount(rs),
+            normalized,
+            Long.valueOf(excludeAccountId)
+        );
+        return rows.isEmpty() ? Optional.<BuffAccount>empty() : Optional.of(rows.get(0));
+    }
+
     private void ensureDefaultAccount() {
         Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM buff_account", Integer.class);
         if (count != null && count.intValue() > 0) {

@@ -7,6 +7,7 @@ import com.qyaaaa.cstaihuan.dto.BuffSessionImportRequest;
 import com.qyaaaa.cstaihuan.dto.BuffSessionStatusResponse;
 import com.qyaaaa.cstaihuan.exception.BuffRateLimitException;
 import com.qyaaaa.cstaihuan.exception.ErrorMessages;
+import com.qyaaaa.cstaihuan.model.BuffAccount;
 import com.qyaaaa.cstaihuan.model.BuffAccountProfile;
 import com.qyaaaa.cstaihuan.model.BuffSessionRecord;
 import java.io.IOException;
@@ -22,6 +23,8 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class BuffSessionService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BuffSessionService.class);
+
     private final BuffProperties buffProperties;
     private final BuffSessionProperties buffSessionProperties;
     private final BuffApiClient buffApiClient;
@@ -94,9 +97,28 @@ public class BuffSessionService {
             }
             record.setLastValidatedAt(now());
             saveRecord(accountId, record);
+
+            // BUFF 账号身份以 buff_user_id 为准：若同一个 BUFF 账号已绑定到别的本地槽位，
+            // 把刚验证好的新会话合并进那个已有账号，并删除当前重复槽位，避免同一账号占用多个槽位重复同步。
+            Optional<BuffAccount> existing = buffAccountService.findOtherAccountByBuffUserId(profile.getBuffUserId(), accountId);
+            if (existing.isPresent()) {
+                long canonicalId = existing.get().getId();
+                saveRecord(canonicalId, record);
+                buffAccountService.updateImportedIdentity(canonicalId, profile.getNickname(), profile.getBuffUserId());
+                buffAccountService.updateSessionSummary(canonicalId, maskCookie(record.getCookie()), "VALID", record.getLastValidatedAt());
+                buffAccountService.deleteAccount(accountId);
+                log.info("Merged duplicate BUFF account by buff_user_id, movedFrom={}, into={}, buffUserId={}",
+                    Long.valueOf(accountId), Long.valueOf(canonicalId), profile.getBuffUserId());
+                BuffSessionStatusResponse merged = new BuffSessionStatusResponse(true, true, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "检测到该 BUFF 账号已存在，已合并到已有账号「" + existing.get().getNickname() + "」。");
+                merged.setAccountId(Long.valueOf(canonicalId));
+                return merged;
+            }
+
             buffAccountService.updateImportedIdentity(accountId, profile.getNickname(), profile.getBuffUserId());
             buffAccountService.updateSessionSummary(accountId, maskCookie(record.getCookie()), "VALID", record.getLastValidatedAt());
-            return new BuffSessionStatusResponse(true, true, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "BUFF 会话有效。");
+            BuffSessionStatusResponse ok = new BuffSessionStatusResponse(true, true, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), "BUFF 会话有效。");
+            ok.setAccountId(Long.valueOf(accountId));
+            return ok;
         } catch (BuffRateLimitException ex) {
             // 限流是临时故障，不能据此判定会话失效，否则会把正常账号误标掉线。保持原状态，等下次再校验。
             return new BuffSessionStatusResponse(true, false, record.getSource(), maskCookie(record.getCookie()), record.getUpdatedAt(), record.getLastValidatedAt(), ErrorMessages.BUFF_RATE_LIMIT);
