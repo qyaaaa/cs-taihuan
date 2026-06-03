@@ -88,6 +88,10 @@ public final class TradeUpOptimizer {
         for (CatalogSkin skin : catalog) {
             catalogByName.put(skin.getName(), skin);
 
+            // 纪念品可作为汰换素材投入，但只能从纪念品包开出、不能作为汰换产物，因此仅从产物池排除。
+            if (isSouvenirName(skin.getName())) {
+                continue;
+            }
             String familyKey = outputFamilyKey(skin);
             OutputFamily family = outputFamilyByIdentity.get(familyKey);
             if (family == null) {
@@ -144,6 +148,7 @@ public final class TradeUpOptimizer {
             if (!item.isTradable() || contractRarity == null || item.getCollection() == null || item.getFloatValue() == null) {
                 continue;
             }
+            // 纪念品可以作为汰换素材投入，其产物是普通产物，因此这里不排除投入，只在产物池排除纪念品。
             if (isUnavailableStatTrakGoldInput(item, contractRarity)) {
                 continue;
             }
@@ -571,6 +576,14 @@ public final class TradeUpOptimizer {
 
     private static boolean isStatTrakName(String name) {
         return name != null && name.toLowerCase().contains("stattrak");
+    }
+
+    // 纪念品按名称识别（BUFF 中文名含“纪念品”，英文 market_hash_name 含 souvenir）。
+    private static boolean isSouvenirName(String name) {
+        if (name == null) {
+            return false;
+        }
+        return name.contains("纪念品") || name.toLowerCase().contains("souvenir");
     }
 
     private static String normalizeKey(String value) {

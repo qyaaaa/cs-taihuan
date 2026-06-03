@@ -1685,6 +1685,253 @@ button:focus-visible,
   line-height: 1.7;
 }
 
+.collection-browser {
+  gap: 18px;
+}
+
+.collection-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.collection-toolbar h2 {
+  margin: 0;
+}
+
+.collection-summary {
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+  padding: 12px;
+  border: 1px solid rgba(91, 124, 250, 0.32);
+  background: var(--surface-soft);
+  text-align: right;
+}
+
+.collection-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.collection-summary strong {
+  color: var(--text);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 22px;
+}
+
+.collection-browser-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.collection-list-panel,
+.collection-detail-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.collection-list-panel {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+
+.collection-filter-row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 2px;
+  background: var(--surface);
+}
+
+.collection-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: rgba(17, 22, 29, 0.72);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.collection-row:hover,
+.collection-row.active {
+  border-color: rgba(91, 124, 250, 0.45);
+  background: var(--surface-soft);
+  transform: translateY(-1px);
+}
+
+.collection-row strong,
+.collection-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-row strong {
+  font-size: 13px;
+}
+
+.collection-row small,
+.collection-row em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.collection-row i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), rgba(143, 107, 255, 0.52));
+}
+
+.collection-detail-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.collection-detail-head h2 {
+  margin: 0;
+}
+
+.collection-rarity-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 430px;
+}
+
+.collection-rarity-strip span,
+.collection-rarity-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: rgba(17, 22, 29, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.collection-rarity-strip span {
+  min-height: 28px;
+  padding: 4px 9px;
+}
+
+.collection-item-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 10px;
+}
+
+.collection-item-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+}
+
+.collection-table-head,
+.collection-item-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) 110px minmax(230px, 0.9fr) 80px;
+  gap: 12px;
+  align-items: center;
+}
+
+.collection-table-head {
+  min-height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(237, 241, 247, 0.04);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.collection-item-row {
+  min-height: 64px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(17, 22, 29, 0.54);
+}
+
+.collection-item-row:last-child {
+  border-bottom: 0;
+}
+
+.collection-item-row strong,
+.collection-item-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-item-row strong {
+  color: var(--text);
+}
+
+.collection-item-row small,
+.paint-index {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.collection-rarity-pill {
+  min-height: 28px;
+  padding: 4px 8px;
+  width: fit-content;
+}
+
+.float-range-cell {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.float-range-track {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  background: var(--field-bg);
+}
+
+.float-range-track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.paint-index {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.collection-empty {
+  padding: 18px;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  text-align: center;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -1809,6 +2056,15 @@ button:focus-visible,
     grid-template-columns: 1fr;
   }
 
+  .collection-browser-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .collection-list-panel {
+    position: static;
+    max-height: 360px;
+  }
+
   .float-slot-grid,
   .float-slot-grid.compact {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1855,7 +2111,7 @@ button:focus-visible,
   }
 
   .workspace-nav {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
   .nav-item {
@@ -1868,7 +2124,8 @@ button:focus-visible,
   .detail-hero,
   .account-manager-row,
   .account-manager-main,
-  .odds-control-bar {
+  .odds-control-bar,
+  .collection-toolbar {
     flex-direction: column;
     grid-template-columns: 1fr;
   }
@@ -1891,6 +2148,16 @@ button:focus-visible,
 
   .odds-reference-grid {
     grid-template-columns: 1fr;
+  }
+
+  .collection-detail-head,
+  .collection-item-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .collection-rarity-strip {
+    justify-content: flex-start;
+    max-width: none;
   }
 
   .odds-control-bar .el-segmented {
@@ -1928,6 +2195,20 @@ button:focus-visible,
 
   .odds-prob-table {
     overflow-x: auto;
+  }
+
+  .collection-table-head {
+    display: none;
+  }
+
+  .collection-item-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .collection-summary {
+    width: 100%;
+    text-align: left;
   }
 
   .workspace-topbar h1 {

@@ -3,8 +3,10 @@ package com.qyaaaa.cstaihuan.service;
 import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import java.sql.Types;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -105,6 +107,33 @@ public class CatalogService {
             Long.valueOf(freshAfterTimestamp)
         );
         return new LinkedHashSet<String>(rows);
+    }
+
+    // 找出磨损档不全(同名皮肤少于 5 个外观)且整组都已过期的皮肤，各返回一个锚点 goods_id 及其收藏品。
+    // 把锚点重新入队同步后，会通过其 relative_goods 自动发现并补齐缺失的磨损档，不依赖库存可达性。
+    public Map<String, String> findIncompleteSkinAnchors(long freshAfterTimestamp, int limit) {
+        int normalizedLimit = Math.max(1, Math.min(limit, 500));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT MIN(goods_id) AS anchor, MAX(collection_name) AS collection_name " +
+                "FROM catalog_skin " +
+                "WHERE goods_id IS NOT NULL AND goods_id <> '' " +
+                // 纪念品永远不是汰换产物，补全它的磨损档没有意义，只补普通产物。
+                "AND name NOT LIKE '%纪念品%' AND name NOT LIKE '%Souvenir%' " +
+                "GROUP BY REGEXP_REPLACE(name, ' \\\\([^)]*\\\\)$', '') " +
+                "HAVING COUNT(*) < 5 AND MAX(updated_at) < ? " +
+                "ORDER BY MAX(updated_at) ASC " +
+                "LIMIT " + normalizedLimit,
+            Long.valueOf(freshAfterTimestamp)
+        );
+        Map<String, String> anchors = new LinkedHashMap<String, String>();
+        for (Map<String, Object> row : rows) {
+            Object anchor = row.get("anchor");
+            if (anchor != null && !String.valueOf(anchor).trim().isEmpty()) {
+                Object collection = row.get("collection_name");
+                anchors.put(String.valueOf(anchor).trim(), collection == null ? null : String.valueOf(collection));
+            }
+        }
+        return anchors;
     }
 
     @Transactional

@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 public class CatalogApplicationService {
     private static final Logger log = LoggerFactory.getLogger(CatalogApplicationService.class);
     private static final int UNLIMITED_DETAIL_REQUESTS = Integer.MAX_VALUE;
+    // 每轮最多补多少个残缺皮肤的锚点，避免一次性把队列撑太大；靠 24h 缓存自然节流，逐轮收敛。
+    private static final int INCOMPLETE_ANCHOR_LIMIT_PER_RUN = 50;
 
     private final CatalogService catalogService;
     private final InventorySnapshotStoreService inventorySnapshotStoreService;
@@ -121,6 +123,16 @@ public class CatalogApplicationService {
 
         catalogSyncTaskStoreService.resetProcessing(snapshot.getId());
         catalogSyncTaskStoreService.enqueue(accountId, snapshot.getId(), seedGoodsToSyncByGoodsId);
+
+        // 补全产物池：把磨损档不全的皮肤锚点也加入队列。库存够不到的汰换产物（如不持有的上级皮肤）
+        // 靠这一步重新抓取锚点，再由其 relative_goods 自动补齐缺失磨损档，修正产物磨损/外观计算。
+        Map<String, String> incompleteAnchors = catalogService.findIncompleteSkinAnchors(freshAfterTimestamp, INCOMPLETE_ANCHOR_LIMIT_PER_RUN);
+        if (!incompleteAnchors.isEmpty()) {
+            catalogSyncTaskStoreService.enqueue(accountId, snapshot.getId(), incompleteAnchors);
+            log.info("Catalog sync enqueued incomplete skin anchors for exterior backfill, snapshotId={}, anchorCount={}",
+                Long.valueOf(snapshot.getId()), Integer.valueOf(incompleteAnchors.size()));
+        }
+
         Map<String, CatalogSkin> catalogByIdentity = new LinkedHashMap<String, CatalogSkin>();
         int processedGoodsCount = 0;
         int skippedExistingCount = seedGoodsIds.size() - seedGoodsToSyncByGoodsId.size();

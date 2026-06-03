@@ -2,6 +2,7 @@ package com.qyaaaa.cstaihuan.controller;
 
 import com.qyaaaa.cstaihuan.service.SkinFloatRangeService;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +23,11 @@ public class SkinFloatRangeController {
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("count", Integer.valueOf(skinFloatRangeService.count()));
         return result;
+    }
+
+    @GetMapping("/collections")
+    public List<Map<String, Object>> collections() {
+        return skinFloatRangeService.listCollectionBrowser();
     }
 
     @PostMapping("/import")

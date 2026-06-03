@@ -6,6 +6,7 @@ import { useInventory } from './composables/useInventory'
 import { usePlans } from './composables/usePlans'
 import { useSession } from './composables/useSession'
 import { useTaskMonitor } from './composables/useTaskMonitor'
+import CollectionBrowserPage from './pages/CollectionBrowserPage.vue'
 import DataPage from './pages/DataPage.vue'
 import FloatCalculatorPage from './pages/FloatCalculatorPage.vue'
 import InventoryPage from './pages/InventoryPage.vue'
@@ -74,6 +75,11 @@ const pageMeta = computed(() => {
       title: '容器概率图鉴',
       description: '按武器箱、纪念包、收藏包、胶囊、布章包和武库补充规则展示中奖概率。',
     },
+    collections: {
+      kicker: '收藏品图鉴',
+      title: '收藏品与磨损范围',
+      description: '展示当前基准库中的收藏品、全部产物，以及每个皮肤自身的磨损上下限。',
+    },
     data: {
       kicker: '数据维护',
       title: '会话与数据维护',
@@ -108,6 +114,11 @@ const navItems = computed(() => [
     key: 'odds',
     label: '概率图鉴',
     metric: '规则',
+  },
+  {
+    key: 'collections',
+    label: '收藏品',
+    metric: '范围',
   },
   {
     key: 'data',
@@ -435,6 +446,8 @@ onMounted(async () => {
         />
 
         <OddsGalleryPage v-else-if="activePage === 'odds'" />
+
+        <CollectionBrowserPage v-else-if="activePage === 'collections'" />
 
         <DataPage
           v-else-if="activePage === 'data'"

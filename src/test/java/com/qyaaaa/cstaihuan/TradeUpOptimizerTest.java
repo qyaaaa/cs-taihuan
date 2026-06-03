@@ -115,6 +115,86 @@ class TradeUpOptimizerTest {
         assertThat(plans).isEmpty();
     }
 
+    // 纪念品规则：纪念品可作为汰换素材投入，但产物只能是普通版皮肤，纪念品本身不可能作为汰换产物。
+    @Test
+    void souvenirInputProducesNormalOutcomesAndNeverSouvenirOutcomes() {
+        TradeUpOptimizer optimizer = new TradeUpOptimizer(souvenirScenarioCatalog(), 0.025d);
+
+        List<BuffItem> souvenirInputs = new ArrayList<BuffItem>();
+        for (int i = 1; i <= 10; i++) {
+            souvenirInputs.add(souvenirInput(i));
+        }
+
+        List<TradeUpPlan> plans = optimizer.findBestContracts(
+            souvenirInputs,
+            5,
+            20,
+            100,
+            "expectedOutputValue",
+            "mil-spec",
+            "normal",
+            "regular"
+        );
+
+        assertThat(plans).hasSize(1);
+        TradeUpPlan plan = plans.get(0);
+
+        // 纪念品可以作为投入素材。
+        assertThat(plan.getInputs()).hasSize(10);
+        assertThat(plan.getInputs()).allMatch(item -> item.getName().contains("纪念品"));
+
+        // 产物只有普通版皮肤，绝不包含纪念品产物。
+        assertThat(plan.getOutcomes()).isNotEmpty();
+        assertThat(plan.getOutcomes()).noneMatch(outcome -> outcome.getSkin().getName().contains("纪念品"));
+        assertThat(plan.getOutcomes())
+            .extracting(outcome -> outcome.getSkin().getGoodsId())
+            .contains("out-normal-ft")
+            .doesNotContain("out-souvenir-ft");
+    }
+
+    // 同一收藏品下既有普通也有纪念品的上级产物，用来验证纪念品被排除在产出池之外。
+    private static List<CatalogSkin> souvenirScenarioCatalog() {
+        List<CatalogSkin> catalog = new ArrayList<CatalogSkin>();
+        catalog.add(catalogSkin("out-normal-ft", "AK-47 | 测试产物 (久经沙场)", "测试收藏品", "restricted", 0.15d, 0.38d, 120.0d));
+        catalog.add(catalogSkin("out-souvenir-ft", "AK-47（纪念品） | 测试产物 (久经沙场)", "测试收藏品", "restricted", 0.15d, 0.38d, 60.0d));
+        return catalog;
+    }
+
+    private static CatalogSkin catalogSkin(String goodsId, String name, String collection, String rarity, double minFloat, double maxFloat, double price) {
+        CatalogSkin skin = new CatalogSkin();
+        skin.setGoodsId(goodsId);
+        skin.setName(name);
+        skin.setCollection(collection);
+        skin.setRarity(rarity);
+        skin.setCategoryKey("weapon_ak47");
+        skin.setQualityLabel("普通");
+        skin.setMinFloat(minFloat);
+        skin.setMaxFloat(maxFloat);
+        skin.setPrice(price);
+        return skin;
+    }
+
+    // 各投入用不同 goods_id 以免被组合去重折叠；名称含“纪念品”以触发纪念品识别。
+    private static BuffItem souvenirInput(int index) {
+        return new BuffItem(
+            "asset-souv-" + index,
+            "格洛克 18 型（纪念品） | 测试素材 (久经沙场)",
+            5.0d,
+            Double.valueOf(0.2d),
+            "0.2",
+            null,
+            null,
+            "测试收藏品",
+            "mil-spec",
+            "weapon_glock",
+            "mil-spec",
+            "军规级",
+            true,
+            "souv-in-" + index,
+            new LinkedHashMap<String, Object>()
+        );
+    }
+
     // 统一断言方案级数值，确保 fixtures 中的预期结果能作为稳定回归基准。
     private static void assertPlanTotals(TradeUpPlan plan, JsonNode expected) {
         assertThat(plan.getRarity()).isEqualTo(expected.get("rarity").asText());

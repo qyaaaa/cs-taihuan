@@ -6,7 +6,9 @@ import com.qyaaaa.cstaihuan.util.SkinRarity;
 import com.qyaaaa.cstaihuan.util.WearSuffix;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import javax.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -178,5 +180,72 @@ public class SkinFloatRangeService {
                 + "ORDER BY collection_zh ASC",
             (rs, rowNum) -> new String[] {rs.getString("collection_zh"), rs.getString("collection_en")}
         );
+    }
+
+    /** Groups all collection-backed skins with their authoritative float ranges for the collection browser. */
+    public List<Map<String, Object>> listCollectionBrowser() {
+        List<SkinFloatRange> rows = jdbcTemplate.query(
+            "SELECT * FROM skin_float_range "
+                + "WHERE collection_zh IS NOT NULL OR collection_en IS NOT NULL "
+                + "ORDER BY collection_zh ASC, collection_en ASC, rarity ASC, name_en ASC",
+            ROW_MAPPER
+        );
+        Map<String, Map<String, Object>> byCollection = new LinkedHashMap<String, Map<String, Object>>();
+        for (SkinFloatRange row : rows) {
+            String key = collectionKey(row);
+            Map<String, Object> collection = byCollection.get(key);
+            if (collection == null) {
+                collection = new LinkedHashMap<String, Object>();
+                collection.put("key", key);
+                collection.put("nameZh", row.getCollectionZh());
+                collection.put("nameEn", row.getCollectionEn());
+                collection.put("items", new ArrayList<Map<String, Object>>());
+                byCollection.put(key, collection);
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> items = (List<Map<String, Object>>) collection.get("items");
+            items.add(toBrowserItem(row));
+        }
+        for (Map<String, Object> collection : byCollection.values()) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> items = (List<Map<String, Object>>) collection.get("items");
+            collection.put("itemCount", Integer.valueOf(items.size()));
+            collection.put("rarities", collectRarities(items));
+        }
+        return new ArrayList<Map<String, Object>>(byCollection.values());
+    }
+
+    private String collectionKey(SkinFloatRange row) {
+        if (StringUtils.hasText(row.getCollectionZh())) {
+            return row.getCollectionZh();
+        }
+        if (StringUtils.hasText(row.getCollectionEn())) {
+            return row.getCollectionEn();
+        }
+        return "unknown";
+    }
+
+    private Map<String, Object> toBrowserItem(SkinFloatRange row) {
+        Map<String, Object> item = new LinkedHashMap<String, Object>();
+        item.put("skinId", row.getSkinId());
+        item.put("paintIndex", row.getPaintIndex());
+        item.put("nameZh", row.getNameZh());
+        item.put("nameEn", row.getNameEn());
+        item.put("weapon", row.getWeapon());
+        item.put("rarity", row.getRarity());
+        item.put("minFloat", Double.valueOf(row.getMinFloat()));
+        item.put("maxFloat", Double.valueOf(row.getMaxFloat()));
+        return item;
+    }
+
+    private List<String> collectRarities(List<Map<String, Object>> items) {
+        List<String> rarities = new ArrayList<String>();
+        for (Map<String, Object> item : items) {
+            String rarity = String.valueOf(item.get("rarity"));
+            if (StringUtils.hasText(rarity) && !rarities.contains(rarity)) {
+                rarities.add(rarity);
+            }
+        }
+        return rarities;
     }
 }
