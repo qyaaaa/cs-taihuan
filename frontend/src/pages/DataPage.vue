@@ -124,7 +124,7 @@ defineEmits([
       <section class="operation-panel">
         <div class="section-head">
           <span class="section-kicker">数据任务</span>
-          <h2>数据任务</h2>
+          <h2>立即执行</h2>
         </div>
         <p class="surface-note">
           长任务统一在这里启动。目录数据会由后端定时补齐；按钮用于立即触发或兜底补救。
@@ -198,7 +198,7 @@ defineEmits([
         </div>
         <div v-else class="task-empty-state">
           <strong>暂无后台任务</strong>
-          <span>点击“从 BUFF 获取”或“从 BUFF 同步目录数据”后，这里会显示实时进度。</span>
+          <span>点击“从 BUFF 获取库存”或“立即同步目录数据”后，这里会显示实时进度。</span>
         </div>
 
         <div class="task-log-panel">
