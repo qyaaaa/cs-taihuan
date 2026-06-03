@@ -37,7 +37,7 @@ buff:
   # 这里把箱标识映射成真实中文收藏品名（键用小写），每出新箱补一条。
   collection-name-mapping:
     "fever case": "热潮收藏品"
-    "set_train_2025": "2025列车停放场收藏品"
+    "set_train_2025": "2025 列车停放站收藏品"
 
 trade-up:
   sale-fee-rate: 0.025
