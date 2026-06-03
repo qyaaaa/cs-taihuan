@@ -1,5 +1,7 @@
 package com.qyaaaa.cstaihuan.config;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,6 +18,9 @@ public class BuffProperties {
     private long fetchCooldownSeconds = 180;
     private CatalogSync catalogSync = new CatalogSync();
     private QrLogin qrLogin = new QrLogin();
+    // 武库通行证（armory）等“发放渠道”会把不同箱子的皮肤混成一个收藏品。这里把 goods detail 的 containers
+    // 标识（如 fever case / set_train_2025）映射成真实中文收藏品名，键统一用小写。每出新箱补一条。
+    private Map<String, String> collectionNameMapping = new LinkedHashMap<String, String>();
 
     public void setCatalogSync(CatalogSync catalogSync) {
         this.catalogSync = catalogSync == null ? new CatalogSync() : catalogSync;

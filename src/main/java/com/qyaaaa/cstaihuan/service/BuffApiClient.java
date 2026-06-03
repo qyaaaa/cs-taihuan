@@ -27,9 +27,34 @@ public class BuffApiClient {
     private static final long PAGE_REQUEST_INTERVAL_MILLIS = 5000L;
     private static final Logger log = LoggerFactory.getLogger(BuffApiClient.class);
     private final RestTemplate restTemplate;
+    private final com.qyaaaa.cstaihuan.config.BuffProperties buffProperties;
 
-    public BuffApiClient(RestTemplate restTemplate) {
+    public BuffApiClient(RestTemplate restTemplate, com.qyaaaa.cstaihuan.config.BuffProperties buffProperties) {
         this.restTemplate = restTemplate;
+        this.buffProperties = buffProperties;
+    }
+
+    // 武库通行证（armory）把不同箱子的皮肤混成一个收藏品。这里从 goods detail 的 containers 取真实箱标识
+    // （去掉 armory 渠道标识），命中配置映射时返回真实中文收藏品名；未命中返回 null，让上层回退到原有取值。
+    private String mappedCollectionFromContainers(Object containers) {
+        java.util.Map<String, String> mapping = buffProperties == null ? null : buffProperties.getCollectionNameMapping();
+        if (mapping == null || mapping.isEmpty() || !(containers instanceof List)) {
+            return null;
+        }
+        for (Object entry : (List<?>) containers) {
+            if (entry == null) {
+                continue;
+            }
+            String identifier = String.valueOf(entry).trim();
+            if (identifier.isEmpty() || "armory".equalsIgnoreCase(identifier)) {
+                continue;
+            }
+            String mapped = mapping.get(identifier.toLowerCase());
+            if (mapped != null && !mapped.trim().isEmpty()) {
+                return mapped.trim();
+            }
+        }
+        return null;
     }
 
     public List<BuffItem> fetchInventory(String baseUrl, String cookie, String game, int pageSize, Integer maxPages) {
@@ -155,6 +180,9 @@ public class BuffApiClient {
                 stringValue(merged, "rarity", "quality")
             )
         );
+        // armory（武库通行证）皮肤的真实收藏品藏在 containers 里且只有英文/internal 名；命中映射时用真实中文收藏品名，
+        // 放在 fallbackCollection 之前覆盖错误的“武库通行证”，未命中则为 null，自动回退到原有取值，不影响其它收藏品。
+        String mappedContainerCollection = mappedCollectionFromContainers(data.get("containers"));
         String collection = "gold".equals(rarity)
             ? firstNonBlank(
                 stringValue(weaponcaseTag, "localized_name"),
@@ -162,9 +190,11 @@ public class BuffApiClient {
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(merged, "collection", "collection_name"),
+                mappedContainerCollection,
                 fallbackCollection
             )
             : firstNonBlank(
+                mappedContainerCollection,
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(weaponcaseTag, "localized_name"),
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
@@ -481,6 +511,7 @@ public class BuffApiClient {
                 stringValue(merged, "rarity", "quality")
             )
         );
+        String mappedContainerCollection = mappedCollectionFromContainers(row.get("containers"));
         String collection = "gold".equals(rarity)
             ? firstNonBlank(
                 stringValue(weaponcaseTag, "localized_name"),
@@ -488,9 +519,11 @@ public class BuffApiClient {
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(merged, "collection", "collection_name"),
+                mappedContainerCollection,
                 fallbackCollection
             )
             : firstNonBlank(
+                mappedContainerCollection,
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(weaponcaseTag, "localized_name"),
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
