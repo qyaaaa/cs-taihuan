@@ -240,9 +240,10 @@ public class TradeUpApplicationService {
     }
 
     // 方案生成可以先用已落库 catalog 计算，但需要把产物池未补齐风险返回给前端。
+    // 只统计“从未成功同步过”的 goods——目录刷新（缓存过期重新入队）不算未补齐，避免误报 EV 不完整。
     private CatalogSyncWarning catalogSyncWarning(long snapshotId) {
         int discoveredCount = catalogSyncTaskStoreService.countAll(snapshotId);
-        int remainingCount = catalogSyncTaskStoreService.countOpen(snapshotId);
+        int remainingCount = catalogSyncTaskStoreService.countNeverSucceededOpen(snapshotId);
         if (discoveredCount > 0 && remainingCount > 0) {
             return new CatalogSyncWarning(true, remainingCount, ErrorMessages.catalogSyncIncompleteWarning(remainingCount));
         }

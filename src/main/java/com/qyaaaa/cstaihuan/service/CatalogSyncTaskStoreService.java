@@ -121,7 +121,13 @@ public class CatalogSyncTaskStoreService {
     }
 
     public void markSucceeded(long taskId) {
-        updateStatus(taskId, STATUS_SUCCEEDED, null);
+        // 成功即永久标记 succeeded_once，后续刷新把状态打回 PENDING 也不会清掉它。
+        jdbcTemplate.update(
+            "UPDATE catalog_sync_task SET status = ?, failure_reason = NULL, succeeded_once = 1, updated_at = ? WHERE id = ?",
+            STATUS_SUCCEEDED,
+            Long.valueOf(System.currentTimeMillis()),
+            Long.valueOf(taskId)
+        );
     }
 
     public void markSkipped(long taskId, String reason) {
@@ -148,6 +154,20 @@ public class CatalogSyncTaskStoreService {
     public int countOpen(long snapshotId) {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM catalog_sync_task WHERE snapshot_id = ? AND (status IN (?, ?) OR (status = ? AND retry_count < ?))",
+            Integer.class,
+            Long.valueOf(snapshotId),
+            STATUS_PENDING,
+            STATUS_PROCESSING,
+            STATUS_FAILED,
+            Integer.valueOf(MAX_RETRY_COUNT)
+        );
+        return count == null ? 0 : count.intValue();
+    }
+
+    // 仅统计“从未成功同步过”的待处理 goods，用于判断目录覆盖是否完整（不含 12h 缓存过期后被重新入队刷新的 goods）。
+    public int countNeverSucceededOpen(long snapshotId) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM catalog_sync_task WHERE snapshot_id = ? AND succeeded_once = 0 AND (status IN (?, ?) OR (status = ? AND retry_count < ?))",
             Integer.class,
             Long.valueOf(snapshotId),
             STATUS_PENDING,
