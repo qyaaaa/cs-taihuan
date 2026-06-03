@@ -26,13 +26,18 @@ buff:
   catalog-sync:
     request-interval-millis: 4000
     max-detail-requests-per-run: 0
-    cache-fresh-millis: 3600000
+    cache-fresh-millis: 86400000
     scheduled-enabled: true
     scheduled-initial-delay-millis: 60000
-    scheduled-fixed-delay-millis: 120000
+    scheduled-fixed-delay-millis: 30000
     scheduled-max-detail-requests-per-run: 80
   session:
     storage-path: data/buff-session.json
+  # 武库通行证（armory）发放的皮肤实际分属不同箱子，BUFF 只给英文/internal 箱名。
+  # 这里把箱标识映射成真实中文收藏品名（键用小写），每出新箱补一条。
+  collection-name-mapping:
+    "fever case": "热潮收藏品"
+    "set_train_2025": "2025列车停放场收藏品"
 
 trade-up:
   sale-fee-rate: 0.025
