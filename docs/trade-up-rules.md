@@ -86,6 +86,17 @@ StatTrak 是独立产物池：
 
 这条规则比简单的“暗金炼金更优”更严格：只有明确通向暗金刀类产物的隐秘输入，才允许进入 StatTrak 红转金方案。
 
+### 纪念品（Souvenir）规则
+
+纪念品只能从纪念品包中开出，不可能通过汰换合同产出，但它本身可以作为汰换素材：
+
+- **纪念品可以作为投入素材**：与同档位的普通皮肤一样参与合同，按其所属收藏品和档位计算。
+- **产物永远是普通版皮肤**：纪念品输入走普通（非 StatTrak）产物池，产出该收藏品上一档的普通皮肤。
+- **纪念品被排除在产物池之外**：任何方案的产物都不会出现纪念品；同一收藏品下的普通版上级皮肤照常保留。
+- **磨损档补全跳过纪念品**：补全产物磨损档的维护逻辑只补普通产物，不会为纪念品补全磨损档（补了也用不上）。
+
+纪念品按名称识别（中文名含“纪念品”，英文 `market_hash_name` 含 `Souvenir`），因为 `quality_label` 存的是品质档位（如“保密”），无法区分纪念品与普通。
+
 ## 5. 磨损计算
 
 产物磨损不是随机值，而是由输入素材的算术平均磨损决定。输入平均磨损使用实际槽位数量作为分母：常规合同除以 10，五合一除以 5。
@@ -206,6 +217,12 @@ EV = sum(P_j * Price(OutcomeFloat_j)) - sum(i=1..5 Cost(Input_i))
 ```text
 src/main/java/com/qyaaaa/cstaihuan/TradeUpOptimizer.java
 ```
+
+关键规则实现位置：
+
+- 纪念品识别与排除：`TradeUpOptimizer#isSouvenirName`（产物池排除 + 投入仍可用）
+- StatTrak / 暗金刀手套规则：`TradeUpOptimizer#validOutcomeFamilies` / `#isUnavailableStatTrakGoldInput`
+- 产物磨损档补全（不依赖库存可达性）：`CatalogService#findIncompleteSkinAnchors` + `CatalogApplicationService`（同步时把残缺普通产物的锚点重新入队，经 `relative_goods` 补齐磨损档；跳过纪念品）
 
 相关数据来源：
 
