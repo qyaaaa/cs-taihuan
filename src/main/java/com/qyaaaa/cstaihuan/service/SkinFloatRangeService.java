@@ -228,6 +228,7 @@ public class SkinFloatRangeService {
             ROW_MAPPER
         );
         Map<String, Map<String, Object>> byCollection = new LinkedHashMap<String, Map<String, Object>>();
+        Map<String, Long> recencyByKey = new java.util.HashMap<String, Long>();
         for (SkinFloatRange row : rows) {
             String key = collectionKey(row);
             Map<String, Object> collection = byCollection.get(key);
@@ -242,6 +243,13 @@ public class SkinFloatRangeService {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> items = (List<Map<String, Object>>) collection.get("items");
             items.add(toBrowserItem(row));
+            // 用收藏品里最大的武器皮肤 paintIndex 作为发布新旧的近似信号：CS 的 paintIndex 大体随时间递增，
+            // 排除手套/特工等远高于武器皮肤的特殊编号（>= 5000）避免被带偏。覆盖全部收藏品，含未同步过的新箱。
+            long paint = parseWeaponPaintIndex(row.getPaintIndex());
+            Long current = recencyByKey.get(key);
+            if (current == null || paint > current.longValue()) {
+                recencyByKey.put(key, Long.valueOf(paint));
+            }
         }
         for (Map<String, Object> collection : byCollection.values()) {
             @SuppressWarnings("unchecked")
@@ -249,7 +257,30 @@ public class SkinFloatRangeService {
             collection.put("itemCount", Integer.valueOf(items.size()));
             collection.put("rarities", collectRarities(items));
         }
-        return new ArrayList<Map<String, Object>>(byCollection.values());
+        // 越新的收藏品排越前（按最大武器皮肤 paintIndex 降序，名称兜底保证顺序稳定）。
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>(byCollection.values());
+        result.sort((left, right) -> {
+            long leftKey = recencyByKey.getOrDefault(String.valueOf(left.get("key")), Long.valueOf(0L)).longValue();
+            long rightKey = recencyByKey.getOrDefault(String.valueOf(right.get("key")), Long.valueOf(0L)).longValue();
+            if (leftKey != rightKey) {
+                return Long.compare(rightKey, leftKey);
+            }
+            return String.valueOf(left.get("nameZh")).compareTo(String.valueOf(right.get("nameZh")));
+        });
+        return result;
+    }
+
+    // 解析武器皮肤的 paintIndex；排除手套/特工等远高于武器皮肤的特殊编号（>= 5000），非数字返回 0。
+    private long parseWeaponPaintIndex(String paintIndex) {
+        if (paintIndex == null) {
+            return 0L;
+        }
+        try {
+            long value = Long.parseLong(paintIndex.trim());
+            return value >= 5000L ? 0L : value;
+        } catch (NumberFormatException ex) {
+            return 0L;
+        }
     }
 
     private String collectionKey(SkinFloatRange row) {
