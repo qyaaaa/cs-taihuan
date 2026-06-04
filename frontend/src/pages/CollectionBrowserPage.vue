@@ -112,7 +112,8 @@ const normalizeItems = (items) => {
       maxFloat: numberValue(item.maxFloat, item.max_float),
     }))
     .sort((left, right) => {
-      const byRarity = rarityOrder(left.rarity) - rarityOrder(right.rarity)
+      // 稀有度越高越靠前（金 > 隐秘 > 保密 > ... > 消费级）。
+      const byRarity = rarityOrder(right.rarity) - rarityOrder(left.rarity)
       if (byRarity !== 0) {
         return byRarity
       }
