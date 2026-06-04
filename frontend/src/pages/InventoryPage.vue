@@ -48,7 +48,7 @@ const rarityLabel = (rarity) => rarityLabels[rarity] || rarity || '未知档位'
       </div>
       <div class="inline-actions">
         <el-button plain :loading="loadingInventory" @click="$emit('restore-inventory')">刷新看板</el-button>
-        <el-button type="warning" @click="$emit('go-data')">去数据页采集</el-button>
+        <el-button type="warning" @click="$emit('go-data')">去总览页采集</el-button>
       </div>
     </div>
     <p class="surface-note toolbar-note">{{ inventoryState.lastAction }}</p>

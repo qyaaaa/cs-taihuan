@@ -62,7 +62,7 @@ defineEmits(['optimize-plans', 'select-plan', 'go-data', 'update-filter'])
       <strong>{{ catalogMissing ? '目录数据为空' : '暂不能生成方案' }}</strong>
       <span>{{ generateDisabledReason }}</span>
       <button type="button" class="inline-link-button" @click="$emit('go-data')">
-        {{ catalogMissing ? '去同步目录数据' : '去数据页准备数据' }}
+        {{ catalogMissing ? '去同步目录数据' : '去总览页准备数据' }}
       </button>
     </div>
 
