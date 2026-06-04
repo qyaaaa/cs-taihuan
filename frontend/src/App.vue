@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useAccounts } from './composables/useAccounts'
 import { useInventory } from './composables/useInventory'
@@ -15,7 +16,11 @@ import OverviewPage from './pages/OverviewPage.vue'
 import PlansPage from './pages/PlansPage.vue'
 import { currency, percent } from './utils/formatters'
 
-const activePage = ref('overview')
+// 当前 tab 由 URL 决定：刷新 / 前进后退 / 深链都会停留在对应页面。无效/已移除的 tab 回退到总览。
+const VALID_PAGES = ['overview', 'inventory', 'plans', 'float', 'odds', 'collections']
+const route = useRoute()
+const router = useRouter()
+const activePage = computed(() => (VALID_PAGES.includes(route.name) ? route.name : 'overview'))
 const accountDialogVisible = ref(false)
 // When true, the session dialog was opened via 「新增」 and no account exists yet;
 // the account is created only after a successful scan / manual cookie save.
@@ -80,11 +85,6 @@ const pageMeta = computed(() => {
       title: '收藏品与磨损范围',
       description: '展示当前基准库中的收藏品、全部产物，以及每个皮肤自身的磨损上下限。',
     },
-    data: {
-      kicker: '数据维护',
-      title: '会话与数据维护',
-      description: '维护 BUFF 会话、同步目录数据，并保存关联档位冗余数据。',
-    },
   }
   return meta[activePage.value] || meta.overview
 })
@@ -102,12 +102,12 @@ const navItems = computed(() => [
   },
   {
     key: 'plans',
-    label: '方案',
+    label: '汰换方案',
     metric: `${plans.sortedPlans.value.length} 条`,
   },
   {
     key: 'float',
-    label: '磨损',
+    label: '特殊磨损计算器',
     metric: '反推',
   },
   {
@@ -120,11 +120,6 @@ const navItems = computed(() => [
     label: '收藏品',
     metric: '范围',
   },
-  {
-    key: 'data',
-    label: '数据',
-    metric: session.sessionState.connected ? '已连接' : '未登录',
-  },
 ])
 
 const statusCards = computed(() => [
@@ -134,7 +129,7 @@ const statusCards = computed(() => [
       ? (session.sessionState.valid ? '有效' : (session.loadingSession.value ? '校验中' : '无效'))
       : '未登录',
     note: session.sessionState.maskedCookie || '尚未导入 Cookie',
-    target: 'data',
+    target: 'overview',
   },
   {
     label: '库存快照',
@@ -146,7 +141,7 @@ const statusCards = computed(() => [
     label: '目录数据',
     value: plans.loadingCatalog.value ? '同步中' : '就绪',
     note: plans.planState.catalogAction,
-    target: 'data',
+    target: 'overview',
   },
   {
     label: '推荐方案',
@@ -190,7 +185,7 @@ const snapshotRequiredReason = computed(() => {
 })
 
 const catalogMissingReason = computed(() => {
-  return plans.catalogMissing.value ? '目录数据库为空，请先到数据页同步目录数据。' : ''
+  return plans.catalogMissing.value ? '目录数据库为空，请先在总览页同步目录数据。' : ''
 })
 
 const planDisabledReason = computed(() => {
@@ -203,9 +198,6 @@ const pageLoading = computed(() => {
   }
   if (activePage.value === 'plans') {
     return plans.loadingPlans.value
-  }
-  if (activePage.value === 'data') {
-    return session.loadingSession.value
   }
   return session.loadingSession.value || inventory.loadingInventoryPage.value
 })
@@ -235,7 +227,7 @@ const generatePlansOnEnter = () => {
 
 const changePage = (page, options = {}) => {
   const fromPage = activePage.value
-  activePage.value = page
+  router.push({ name: page }).catch(() => {})
   if (page === 'plans' && (fromPage !== 'plans' || options.forceGenerate)) {
     generatePlansOnEnter()
   }
@@ -244,7 +236,7 @@ const changePage = (page, options = {}) => {
 const openSessionDialog = () => {
   // Importing a session for the currently selected account (not a new account).
   pendingNewAccount.value = false
-  changePage('data')
+  changePage('overview')
   session.sessionDialogVisible.value = true
 }
 
@@ -313,7 +305,7 @@ const deleteManagedAccount = async (account) => {
 
 const optimizeFromOverview = () => {
   if (planDisabledReason.value) {
-    changePage('data')
+    changePage('overview')
     return
   }
   changePage('plans', { forceGenerate: true })
@@ -371,7 +363,6 @@ onMounted(async () => {
           @click="changePage(item.key)"
         >
           <span>{{ item.label }}</span>
-          <small>{{ item.metric }}</small>
         </button>
       </nav>
     </aside>
@@ -416,7 +407,7 @@ onMounted(async () => {
           :inventory-items="inventory.inventoryItems.value"
           :rarity-options="inventory.inventoryRarityOptions"
           @restore-inventory="inventory.restorePersistedInventory"
-          @go-data="changePage('data')"
+          @go-data="changePage('overview')"
           @page-change="inventory.changeInventoryPage"
           @update-rarity="inventory.changeInventoryRarity"
         />
@@ -434,7 +425,7 @@ onMounted(async () => {
           :generate-disabled-reason="planDisabledReason"
           :catalog-missing="plans.catalogMissing.value"
           @optimize-plans="plans.optimizePlans"
-          @go-data="changePage('data')"
+          @go-data="changePage('overview')"
           @select-plan="plans.selectedPlanIndex.value = $event"
           @update-filter="plans.updatePlanFilter"
         />
@@ -450,7 +441,7 @@ onMounted(async () => {
         <CollectionBrowserPage v-else-if="activePage === 'collections'" />
 
         <DataPage
-          v-else-if="activePage === 'data'"
+          v-if="activePage === 'overview'"
           :session-state="session.sessionState"
           :loading-session="session.loadingSession.value"
           :loading-inventory="inventory.loadingInventory.value"

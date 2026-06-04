@@ -32,9 +32,10 @@ public class SkinFloatRangeController {
 
     @PostMapping("/import")
     public Map<String, Object> reimport() {
-        int imported = skinFloatRangeService.importFromSnapshot();
+        int imported = skinFloatRangeService.importMissingFromSnapshot();
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("imported", Integer.valueOf(imported));
+        result.put("total", Integer.valueOf(skinFloatRangeService.count()));
         return result;
     }
 }
