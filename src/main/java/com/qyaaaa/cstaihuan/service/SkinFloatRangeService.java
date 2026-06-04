@@ -6,10 +6,12 @@ import com.qyaaaa.cstaihuan.util.SkinRarity;
 import com.qyaaaa.cstaihuan.util.WearSuffix;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import javax.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +64,11 @@ public class SkinFloatRangeService {
             if (count() == 0) {
                 int imported = importFromSnapshot();
                 log.info("Seeded skin_float_range from snapshot, count={}", imported);
+            } else {
+                int imported = importMissingFromSnapshot();
+                if (imported > 0) {
+                    log.info("Added missing skin_float_range rows from snapshot, count={}", imported);
+                }
             }
         } catch (Exception e) {
             log.warn("Skipped skin_float_range seed: {}", e.getMessage());
@@ -76,7 +83,35 @@ public class SkinFloatRangeService {
     /** Loads the bundled JSON snapshot and replaces the table contents. Returns row count. */
     @Transactional
     public int importFromSnapshot() {
-        final List<SkinFloatRange> rows = readSnapshot();
+        final List<SkinFloatRange> rows = readPreparedSnapshot();
+        jdbcTemplate.update("DELETE FROM skin_float_range");
+        insertRows(rows);
+        log.info("Imported skin_float_range rows={}", Integer.valueOf(rows.size()));
+        return rows.size();
+    }
+
+    /**
+     * Adds only rows whose snapshot skin_id is not present locally. This keeps existing
+     * manually imported/older rows intact while letting new collections become visible.
+     */
+    @Transactional
+    public int importMissingFromSnapshot() {
+        List<SkinFloatRange> rows = readPreparedSnapshot();
+        Set<String> existingSkinIds = new HashSet<String>(
+            jdbcTemplate.query("SELECT skin_id FROM skin_float_range", (rs, rowNum) -> rs.getString("skin_id"))
+        );
+        List<SkinFloatRange> missingRows = new ArrayList<SkinFloatRange>();
+        for (SkinFloatRange row : rows) {
+            if (StringUtils.hasText(row.getSkinId()) && !existingSkinIds.contains(row.getSkinId())) {
+                missingRows.add(row);
+            }
+        }
+        insertRows(missingRows);
+        return missingRows.size();
+    }
+
+    private List<SkinFloatRange> readPreparedSnapshot() {
+        List<SkinFloatRange> rows = readSnapshot();
         for (SkinFloatRange row : rows) {
             row.setBaseNameEn(WearSuffix.toMatchKey(row.getNameEn()));
             row.setBaseNameZh(WearSuffix.toMatchKey(row.getNameZh()));
@@ -84,40 +119,42 @@ public class SkinFloatRangeService {
             // and rarity filtering works (knives/gloves -> gold by weapon).
             row.setRarity(SkinRarity.normalize(row.getRarity(), row.getWeapon()));
         }
-        jdbcTemplate.update("DELETE FROM skin_float_range");
-        if (!rows.isEmpty()) {
-            final long now = System.currentTimeMillis();
-            jdbcTemplate.batchUpdate(
-                "INSERT INTO skin_float_range (skin_id, paint_index, name_en, name_zh, base_name_en, base_name_zh, "
-                    + "weapon, rarity, min_float, max_float, collection_en, collection_zh, source, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                new BatchPreparedStatementSetter() {
-                    public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
-                        SkinFloatRange r = rows.get(i);
-                        ps.setString(1, r.getSkinId());
-                        ps.setString(2, r.getPaintIndex());
-                        ps.setString(3, r.getNameEn());
-                        ps.setString(4, r.getNameZh());
-                        ps.setString(5, r.getBaseNameEn());
-                        ps.setString(6, r.getBaseNameZh());
-                        ps.setString(7, r.getWeapon());
-                        ps.setString(8, r.getRarity());
-                        ps.setDouble(9, r.getMinFloat());
-                        ps.setDouble(10, r.getMaxFloat());
-                        ps.setString(11, r.getCollectionEn());
-                        ps.setString(12, r.getCollectionZh());
-                        ps.setString(13, SOURCE);
-                        ps.setLong(14, now);
-                    }
+        return rows;
+    }
 
-                    public int getBatchSize() {
-                        return rows.size();
-                    }
-                }
-            );
+    private void insertRows(final List<SkinFloatRange> rows) {
+        if (rows.isEmpty()) {
+            return;
         }
-        log.info("Imported skin_float_range rows={}", Integer.valueOf(rows.size()));
-        return rows.size();
+        final long now = System.currentTimeMillis();
+        jdbcTemplate.batchUpdate(
+            "INSERT INTO skin_float_range (skin_id, paint_index, name_en, name_zh, base_name_en, base_name_zh, "
+                + "weapon, rarity, min_float, max_float, collection_en, collection_zh, source, updated_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            new BatchPreparedStatementSetter() {
+                public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
+                    SkinFloatRange r = rows.get(i);
+                    ps.setString(1, r.getSkinId());
+                    ps.setString(2, r.getPaintIndex());
+                    ps.setString(3, r.getNameEn());
+                    ps.setString(4, r.getNameZh());
+                    ps.setString(5, r.getBaseNameEn());
+                    ps.setString(6, r.getBaseNameZh());
+                    ps.setString(7, r.getWeapon());
+                    ps.setString(8, r.getRarity());
+                    ps.setDouble(9, r.getMinFloat());
+                    ps.setDouble(10, r.getMaxFloat());
+                    ps.setString(11, r.getCollectionEn());
+                    ps.setString(12, r.getCollectionZh());
+                    ps.setString(13, SOURCE);
+                    ps.setLong(14, now);
+                }
+
+                public int getBatchSize() {
+                    return rows.size();
+                }
+            }
+        );
     }
 
     private List<SkinFloatRange> readSnapshot() {
