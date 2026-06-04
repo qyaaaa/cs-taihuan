@@ -64,7 +64,7 @@ const selectedRarityCounts = computed(() => {
     counts.set(item.rarity, (counts.get(item.rarity) || 0) + 1)
   })
   return [...counts.entries()]
-    .sort(([left], [right]) => rarityOrder(left) - rarityOrder(right))
+    .sort(([left], [right]) => rarityOrder(right) - rarityOrder(left))
     .map(([rarity, count]) => ({ rarity, count, label: rarityLabel(rarity), color: rarityColor(rarity) }))
 })
 
@@ -215,7 +215,7 @@ onMounted(loadCollections)
             <span>产物</span>
             <span>品质</span>
             <span>磨损范围</span>
-            <span>Paint</span>
+            <span>图案编号</span>
           </div>
           <article v-for="item in visibleItems" :key="item.skinId || `${item.nameEn}-${item.paintIndex}`" class="collection-item-row">
             <div>
