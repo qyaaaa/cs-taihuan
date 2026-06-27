@@ -21,7 +21,7 @@ public class CatalogService {
     private static final Logger log = LoggerFactory.getLogger(CatalogService.class);
 
     private final JdbcTemplate jdbcTemplate;
-    private static final String CATALOG_COLUMNS = "name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price";
+    private static final String CATALOG_COLUMNS = "name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price, image_url";
 
     public CatalogService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -143,7 +143,7 @@ public class CatalogService {
 
         if (!items.isEmpty()) {
             jdbcTemplate.batchUpdate(
-                "INSERT INTO catalog_skin (name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO catalog_skin (name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price, image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 new BatchPreparedStatementSetter() {
                     public void setValues(java.sql.PreparedStatement statement, int index) throws java.sql.SQLException {
                         CatalogSkin skin = items.get(index);
@@ -157,8 +157,9 @@ public class CatalogService {
                         statement.setDouble(7, skin.getMinFloat());
                         statement.setDouble(8, skin.getMaxFloat());
                         statement.setBigDecimal(9, java.math.BigDecimal.valueOf(skin.getPrice()));
-                        statement.setLong(10, now);
+                        statement.setString(10, skin.getImageUrl());
                         statement.setLong(11, now);
+                        statement.setLong(12, now);
                     }
 
                     public int getBatchSize() {
@@ -179,8 +180,8 @@ public class CatalogService {
         }
         log.info("Catalog upsert start, itemCount={}", Integer.valueOf(items.size()));
         jdbcTemplate.batchUpdate(
-            "INSERT INTO catalog_skin (name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+            "INSERT INTO catalog_skin (name, goods_id, collection_name, rarity, category_key, quality_label, min_float, max_float, price, image_url, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE " +
                 "name = VALUES(name), " +
                 "goods_id = VALUES(goods_id), " +
@@ -191,6 +192,8 @@ public class CatalogService {
                 "min_float = VALUES(min_float), " +
                 "max_float = VALUES(max_float), " +
                 "price = VALUES(price), " +
+                // 仅在抓到新图标时覆盖，避免某次响应缺图把已有图标抹成 NULL。
+                "image_url = COALESCE(VALUES(image_url), image_url), " +
                 "updated_at = VALUES(updated_at)",
             new BatchPreparedStatementSetter() {
                 public void setValues(java.sql.PreparedStatement statement, int index) throws java.sql.SQLException {
@@ -209,8 +212,13 @@ public class CatalogService {
                     statement.setDouble(7, skin.getMinFloat());
                     statement.setDouble(8, skin.getMaxFloat());
                     statement.setBigDecimal(9, java.math.BigDecimal.valueOf(skin.getPrice()));
-                    statement.setLong(10, now);
+                    if (skin.getImageUrl() == null || skin.getImageUrl().trim().isEmpty()) {
+                        statement.setNull(10, Types.VARCHAR);
+                    } else {
+                        statement.setString(10, skin.getImageUrl());
+                    }
                     statement.setLong(11, now);
+                    statement.setLong(12, now);
                 }
 
                 public int getBatchSize() {
@@ -238,6 +246,7 @@ public class CatalogService {
         skin.setMinFloat(rs.getDouble("min_float"));
         skin.setMaxFloat(rs.getDouble("max_float"));
         skin.setPrice(rs.getDouble("price"));
+        skin.setImageUrl(rs.getString("image_url"));
         return skin;
     }
 }

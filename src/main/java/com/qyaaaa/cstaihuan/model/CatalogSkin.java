@@ -23,6 +23,8 @@ public class CatalogSkin {
     @JsonProperty("max_float")
     private double maxFloat;
     private double price;
+    @JsonProperty("image_url")
+    private String imageUrl;
 
     public CatalogSkin(String name, String collection, String rarity, double minFloat, double maxFloat, double price) {
         this.name = name;

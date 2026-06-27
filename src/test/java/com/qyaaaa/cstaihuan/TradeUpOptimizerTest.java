@@ -115,6 +115,63 @@ class TradeUpOptimizerTest {
         assertThat(plans).isEmpty();
     }
 
+    // 普通(非 StatTrak)隐秘合同产出非 StatTrak 的刀“和”手套；StatTrak 合同只出刀（手套没有 StatTrak）。
+    @Test
+    void normalCovertContractProducesBothGoldKnifeAndGloves() {
+        List<CatalogSkin> goldCatalog = new ArrayList<CatalogSkin>();
+        CatalogSkin knife = catalogSkin("out-normal-knife-fn", "★ 测试刀 | 渐变之色 (崭新出厂)", "测试收藏品", "gold", 0.0d, 0.08d, 5000.0d);
+        knife.setCategoryKey("weapon_knife_kukri");
+        goldCatalog.add(knife);
+        CatalogSkin gloves = catalogSkin("out-normal-gloves-ft", "测试手套（★） | 渐变之色 (久经沙场)", "测试收藏品", "gold", 0.06d, 0.8d, 3000.0d);
+        gloves.setCategoryKey("weapon_gloves");
+        goldCatalog.add(gloves);
+        TradeUpOptimizer optimizer = new TradeUpOptimizer(goldCatalog, 0.025d);
+
+        List<BuffItem> normalCovertInputs = new ArrayList<BuffItem>();
+        for (int i = 1; i <= 5; i++) {
+            normalCovertInputs.add(normalCovertInput(i));
+        }
+
+        List<TradeUpPlan> plans = optimizer.findBestContracts(
+            normalCovertInputs,
+            5,
+            20,
+            100,
+            "expectedOutputValue",
+            "covert",
+            "normal",
+            "gold"
+        );
+
+        assertThat(plans).hasSize(1);
+        TradeUpPlan plan = plans.get(0);
+        // 普通隐秘合同：刀和手套都应作为产物出现。
+        assertThat(plan.getOutcomes())
+            .extracting(outcome -> outcome.getSkin().getGoodsId())
+            .contains("out-normal-knife-fn", "out-normal-gloves-ft");
+    }
+
+    // 普通（非 StatTrak）隐秘投入，goods_id 各异避免组合去重，collection 与金色刀同收藏品。
+    private static BuffItem normalCovertInput(int index) {
+        return new BuffItem(
+            "asset-covert-" + index,
+            "AK-47 | 测试隐秘 " + index + " (久经沙场)",
+            300.0d,
+            Double.valueOf(0.2d),
+            "0.2",
+            null,
+            null,
+            "测试收藏品",
+            "covert",
+            "weapon_ak47",
+            "covert",
+            "隐秘",
+            true,
+            "covert-in-" + index,
+            new LinkedHashMap<String, Object>()
+        );
+    }
+
     // 纪念品规则：纪念品可作为汰换素材投入，但产物只能是普通版皮肤，纪念品本身不可能作为汰换产物。
     @Test
     void souvenirInputProducesNormalOutcomesAndNeverSouvenirOutcomes() {

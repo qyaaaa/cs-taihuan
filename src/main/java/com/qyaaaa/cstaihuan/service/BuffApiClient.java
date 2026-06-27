@@ -5,6 +5,7 @@ import com.qyaaaa.cstaihuan.exception.ErrorMessages;
 import com.qyaaaa.cstaihuan.model.BuffAccountProfile;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
+import com.qyaaaa.cstaihuan.util.SkinRarity;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,6 +51,30 @@ public class BuffApiClient {
                 continue;
             }
             String mapped = mapping.get(identifier.toLowerCase());
+            if (mapped != null && !mapped.trim().isEmpty()) {
+                return mapped.trim();
+            }
+        }
+        return null;
+    }
+
+    // 武库通行证（armory）只是发放渠道，itemset 标签会统一显示成“武库通行证”，真正的箱子藏在 weaponcase 标签里
+    // （internal_name=Fever Case / localized_name=fever case）。命中配置映射时返回真实中文收藏品名（如 热潮收藏品），
+    // 未命中返回 null，让上层回退到原有取值。键统一小写，internal_name 与 localized_name 都尝试。
+    private String mappedCollectionFromWeaponcase(Map<String, Object> weaponcaseTag) {
+        java.util.Map<String, String> mapping = buffProperties == null ? null : buffProperties.getCollectionNameMapping();
+        if (mapping == null || mapping.isEmpty()) {
+            return null;
+        }
+        String[] candidateKeys = new String[] {
+            stringValue(weaponcaseTag, "internal_name"),
+            stringValue(weaponcaseTag, "localized_name")
+        };
+        for (String key : candidateKeys) {
+            if (key == null || key.trim().isEmpty()) {
+                continue;
+            }
+            String mapped = mapping.get(key.trim().toLowerCase());
             if (mapped != null && !mapped.trim().isEmpty()) {
                 return mapped.trim();
             }
@@ -180,21 +205,29 @@ public class BuffApiClient {
                 stringValue(merged, "rarity", "quality")
             )
         );
-        // armory（武库通行证）皮肤的真实收藏品藏在 containers 里且只有英文/internal 名；命中映射时用真实中文收藏品名，
-        // 放在 fallbackCollection 之前覆盖错误的“武库通行证”，未命中则为 null，自动回退到原有取值，不影响其它收藏品。
-        String mappedContainerCollection = mappedCollectionFromContainers(data.get("containers"));
+        // 刀/手套的来源品质并不统一（covert/extraordinary 等），但在汰换体系里它们一律是暗金(gold)，
+        // 只能作为暗金合同产物，绝不能当成隐秘(covert)产物混入普通汰换产物池，否则会出现“练出刀”的错误方案。
+        if (SkinRarity.isKnifeOrGlove(categoryKey)) {
+            rarity = "gold";
+        }
+        // armory（武库通行证）皮肤的真实收藏品藏在 containers / weaponcase 里且只有英文/internal 名；命中映射时用真实中文收藏品名，
+        // 放在 itemset（会显示成“武库通行证”渠道名）之前覆盖错误的归类，未命中则为 null，自动回退到原有取值，不影响其它收藏品。
+        String mappedArmoryCollection = firstNonBlank(
+            mappedCollectionFromWeaponcase(weaponcaseTag),
+            mappedCollectionFromContainers(data.get("containers"))
+        );
         String collection = "gold".equals(rarity)
             ? firstNonBlank(
+                mappedArmoryCollection,
                 stringValue(weaponcaseTag, "localized_name"),
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(merged, "collection", "collection_name"),
-                mappedContainerCollection,
                 fallbackCollection
             )
             : firstNonBlank(
-                mappedContainerCollection,
+                mappedArmoryCollection,
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(weaponcaseTag, "localized_name"),
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
@@ -222,6 +255,7 @@ public class BuffApiClient {
             stringValue(merged, "quality_name", "rarity_name")
         ));
         skin.setPrice(doubleValue(merged, 0.0d, "sell_min_price", "quick_price", "price", "steam_price_cny"));
+        skin.setImageUrl(normalizeImageUrl(stringValue(merged, "original_icon_url", "icon_url", "img", "image_url")));
 
         double[] floatRange = extractPaintwearRange(mergeFirst(data.get("paintwear_range"), goodsInfo.get("paintwear_range"), info.get("paintwear_range")));
         skin.setMinFloat(floatRange[0]);
@@ -511,19 +545,27 @@ public class BuffApiClient {
                 stringValue(merged, "rarity", "quality")
             )
         );
-        String mappedContainerCollection = mappedCollectionFromContainers(row.get("containers"));
+        // 刀/手套的来源品质并不统一（covert/extraordinary 等），但在汰换体系里它们一律是暗金(gold)，
+        // 只能作为暗金合同产物，绝不能当成隐秘(covert)产物混入普通汰换产物池，否则会出现“练出刀”的错误方案。
+        if (SkinRarity.isKnifeOrGlove(categoryKey)) {
+            rarity = "gold";
+        }
+        String mappedArmoryCollection = firstNonBlank(
+            mappedCollectionFromWeaponcase(weaponcaseTag),
+            mappedCollectionFromContainers(row.get("containers"))
+        );
         String collection = "gold".equals(rarity)
             ? firstNonBlank(
+                mappedArmoryCollection,
                 stringValue(weaponcaseTag, "localized_name"),
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(goodsInfo, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
                 stringValue(merged, "collection", "collection_name"),
-                mappedContainerCollection,
                 fallbackCollection
             )
             : firstNonBlank(
-                mappedContainerCollection,
+                mappedArmoryCollection,
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(weaponcaseTag, "localized_name"),
                 stringValue(info, "collection", "collection_name", "itemset", "itemset_name", "set_name", "series_name"),
@@ -551,6 +593,7 @@ public class BuffApiClient {
             stringValue(merged, "quality_name", "rarity_name")
         ));
         skin.setPrice(doubleValue(merged, 0.0d, "sell_min_price", "quick_price", "price", "steam_price_cny"));
+        skin.setImageUrl(normalizeImageUrl(stringValue(merged, "original_icon_url", "icon_url", "img", "image_url")));
 
         double[] floatRange = extractPaintwearRange(mergeFirst(row.get("paintwear_range"), goodsInfo.get("paintwear_range"), info.get("paintwear_range")));
         skin.setMinFloat(floatRange[0]);
@@ -623,6 +666,7 @@ public class BuffApiClient {
         Map<String, Object> weaponTag = mapValue(tags.get("weapon"));
         Map<String, Object> exteriorTag = mapValue(tags.get("exterior"));
         Map<String, Object> itemsetTag = mapValue(tags.get("itemset"));
+        Map<String, Object> weaponcaseTag = mapValue(tags.get("weaponcase"));
         Map<String, Object> merged = new LinkedHashMap<String, Object>();
         merged.putAll(goods);
         merged.putAll(asset);
@@ -653,6 +697,7 @@ public class BuffApiClient {
                 stringValue(merged, "exterior", "wear_name", "paintwear_desc", "item_wear")
             ),
             firstNonBlank(
+                mappedCollectionFromWeaponcase(weaponcaseTag),
                 stringValue(itemsetTag, "localized_name"),
                 stringValue(merged, "collection", "collection_name")
             ),
@@ -801,10 +846,12 @@ public class BuffApiClient {
         if ("rare_weapon".equals(lowered) || "milspec_weapon".equals(lowered)) {
             return "mil-spec";
         }
-        if ("common_weapon".equals(lowered) || "industrial_weapon".equals(lowered)) {
+        if ("uncommon_weapon".equals(lowered) || "industrial_weapon".equals(lowered)) {
             return "industrial";
         }
-        if ("default_weapon".equals(lowered) || "consumer_weapon".equals(lowered)) {
+        // CS 内部 tier 命名族：common=消费级, uncommon=工业级, rare=军规, mythical=受限, legendary=保密, ancient=隐秘。
+        // common_weapon 是消费级而非工业级，早期误归到 industrial，导致整箱消费级皮被错配档位。
+        if ("default_weapon".equals(lowered) || "consumer_weapon".equals(lowered) || "common_weapon".equals(lowered)) {
             return "consumer";
         }
         if ("milspec".equals(lowered) || "mil-spec grade".equals(lowered)) {

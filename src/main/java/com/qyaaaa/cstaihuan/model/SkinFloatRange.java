@@ -24,6 +24,8 @@ public class SkinFloatRange {
     private double maxFloat;
     private String collectionEn;
     private String collectionZh;
+    // Skin icon URL, sourced from the snapshot's `image` field (joined in from ByMykel/CSGO-API by id).
+    private String image;
     // Normalized base names (computed at import time, not present in the JSON).
     private String baseNameEn;
     private String baseNameZh;

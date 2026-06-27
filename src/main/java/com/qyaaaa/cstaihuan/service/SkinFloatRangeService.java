@@ -47,6 +47,7 @@ public class SkinFloatRangeService {
         row.setMaxFloat(rs.getDouble("max_float"));
         row.setCollectionEn(rs.getString("collection_en"));
         row.setCollectionZh(rs.getString("collection_zh"));
+        row.setImage(rs.getString("image_url"));
         return row;
     };
 
@@ -69,6 +70,8 @@ public class SkinFloatRangeService {
                 if (imported > 0) {
                     log.info("Added missing skin_float_range rows from snapshot, count={}", imported);
                 }
+                // Existing rows predate the image_url column; backfill their icons from the snapshot.
+                backfillMissingImages();
             }
         } catch (Exception e) {
             log.warn("Skipped skin_float_range seed: {}", e.getMessage());
@@ -110,6 +113,45 @@ public class SkinFloatRangeService {
         return missingRows.size();
     }
 
+    /**
+     * Fills image_url for rows that don't have one yet, matching the snapshot by skin_id. Used to
+     * retro-fit icons onto rows imported before the image_url column existed. No-op once all set.
+     */
+    @Transactional
+    public int backfillMissingImages() {
+        Integer missing = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM skin_float_range WHERE image_url IS NULL OR image_url = ''", Integer.class);
+        if (missing == null || missing.intValue() == 0) {
+            return 0;
+        }
+        final List<SkinFloatRange> withImage = new ArrayList<SkinFloatRange>();
+        for (SkinFloatRange r : readSnapshot()) {
+            if (StringUtils.hasText(r.getSkinId()) && StringUtils.hasText(r.getImage())) {
+                withImage.add(r);
+            }
+        }
+        if (withImage.isEmpty()) {
+            return 0;
+        }
+        jdbcTemplate.batchUpdate(
+            "UPDATE skin_float_range SET image_url = ? WHERE skin_id = ? AND (image_url IS NULL OR image_url = '')",
+            new BatchPreparedStatementSetter() {
+                public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
+                    SkinFloatRange r = withImage.get(i);
+                    ps.setString(1, r.getImage());
+                    ps.setString(2, r.getSkinId());
+                }
+
+                public int getBatchSize() {
+                    return withImage.size();
+                }
+            }
+        );
+        log.info("Backfilled skin_float_range image_url, candidateRows={}, missingBefore={}",
+            Integer.valueOf(withImage.size()), missing);
+        return missing.intValue();
+    }
+
     private List<SkinFloatRange> readPreparedSnapshot() {
         List<SkinFloatRange> rows = readSnapshot();
         for (SkinFloatRange row : rows) {
@@ -129,8 +171,8 @@ public class SkinFloatRangeService {
         final long now = System.currentTimeMillis();
         jdbcTemplate.batchUpdate(
             "INSERT INTO skin_float_range (skin_id, paint_index, name_en, name_zh, base_name_en, base_name_zh, "
-                + "weapon, rarity, min_float, max_float, collection_en, collection_zh, source, updated_at) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                + "weapon, rarity, min_float, max_float, collection_en, collection_zh, image_url, source, updated_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             new BatchPreparedStatementSetter() {
                 public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
                     SkinFloatRange r = rows.get(i);
@@ -146,8 +188,9 @@ public class SkinFloatRangeService {
                     ps.setDouble(10, r.getMaxFloat());
                     ps.setString(11, r.getCollectionEn());
                     ps.setString(12, r.getCollectionZh());
-                    ps.setString(13, SOURCE);
-                    ps.setLong(14, now);
+                    ps.setString(13, r.getImage());
+                    ps.setString(14, SOURCE);
+                    ps.setLong(15, now);
                 }
 
                 public int getBatchSize() {
@@ -303,6 +346,7 @@ public class SkinFloatRangeService {
         item.put("rarity", row.getRarity());
         item.put("minFloat", Double.valueOf(row.getMinFloat()));
         item.put("maxFloat", Double.valueOf(row.getMaxFloat()));
+        item.put("image", row.getImage());
         return item;
     }
 

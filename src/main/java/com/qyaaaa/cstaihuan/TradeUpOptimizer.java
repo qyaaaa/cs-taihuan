@@ -411,6 +411,8 @@ public final class TradeUpOptimizer {
         if (families == null || families.isEmpty()) {
             return Collections.emptyList();
         }
+        // 普通(非 StatTrak)隐秘合同产出非 StatTrak 的刀和手套（即 families 整体）；
+        // StatTrak 隐秘合同只产出 StatTrak 刀——手套没有 StatTrak 版本，故从 StatTrak 金色池中排除。
         if (!"gold".equals(targetRarity) || !statTrakContract) {
             return families;
         }
