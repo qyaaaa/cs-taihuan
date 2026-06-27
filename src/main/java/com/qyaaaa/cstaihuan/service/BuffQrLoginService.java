@@ -7,8 +7,8 @@ import com.microsoft.playwright.ElementHandle;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.Cookie;
-import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.ScreenshotType;
+import com.microsoft.playwright.options.WaitUntilState;
 import com.qyaaaa.cstaihuan.dto.QrLoginStartResponse;
 import com.qyaaaa.cstaihuan.dto.QrLoginStatusResponse;
 import java.io.IOException;
@@ -30,8 +30,8 @@ import org.springframework.stereotype.Service;
 public class BuffQrLoginService {
     private static final Logger log = LoggerFactory.getLogger(BuffQrLoginService.class);
     private static final long SESSION_TIMEOUT_MILLIS = 5L * 60L * 1000L; // 5 minutes
-    private static final long QR_RENDER_TIMEOUT_MILLIS = 8000L; // max wait for QR image to appear
-    private static final long QR_POLL_INTERVAL_MILLIS = 500L; // poll interval while waiting for QR
+    private static final long QR_RENDER_TIMEOUT_MILLIS = 12000L; // max wait for QR image to appear
+    private static final long QR_POLL_INTERVAL_MILLIS = 250L; // poll interval while waiting for QR
     private static final String BUFF_LOGIN_URL = "https://buff.163.com/account/login";
 
     private final BuffSessionService buffSessionService;
@@ -121,9 +121,14 @@ public class BuffQrLoginService {
 
             // Open BUFF's own login page. Its default panel is the "扫码登录" (scan with the
             // NetEase BUFF App) flow; the QR lives in #qr_code_box as a data:image base64 src.
+            // Return as soon as the document response commits (COMMIT) instead of waiting for
+            // DOMContentLoaded/NETWORKIDLE — BUFF's heavy blocking scripts make those wait up to
+            // ~15s. captureQrCode() then waits for the QR element directly, so we pay only for
+            // the time the QR actually needs to render.
             log.info("Starting QR login session={}, navigating to BUFF login page...", sessionId);
-            page.navigate(BUFF_LOGIN_URL);
-            page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(15000));
+            page.navigate(BUFF_LOGIN_URL, new Page.NavigateOptions()
+                .setWaitUntil(WaitUntilState.COMMIT)
+                .setTimeout(15000));
 
             String currentUrl = page.url().toLowerCase();
             log.info("QR login session={}, current URL after navigation: {}", sessionId, currentUrl);
@@ -266,8 +271,22 @@ public class BuffQrLoginService {
     };
 
     // Returns the base64 payload (without the data URL prefix) of BUFF's login QR code.
+    // Waits event-driven for the QR <img> to appear (its src is set once the page JS fetches
+    // the QR token), so it returns the instant the code renders rather than on a fixed tick.
     private String captureQrCode(Page page, String sessionId) {
         long deadline = Instant.now().toEpochMilli() + QR_RENDER_TIMEOUT_MILLIS;
+
+        // Block until BUFF's primary QR <img> with a data:image src is present, then read it.
+        try {
+            long remaining = deadline - Instant.now().toEpochMilli();
+            if (remaining > 0) {
+                page.waitForSelector("#qr_code_box img[src^='data:image']",
+                    new Page.WaitForSelectorOptions().setTimeout(remaining));
+            }
+        } catch (Exception e) {
+            log.debug("QR primary selector wait timed out: {}", e.getMessage());
+        }
+
         while (Instant.now().toEpochMilli() < deadline) {
             for (String selector : QR_SELECTORS) {
                 try {

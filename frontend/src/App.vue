@@ -517,8 +517,8 @@ onMounted(async () => {
             <div class="qrcode-actions">
               <el-button
                 type="primary"
-                :loading="session.loadingSession.value && session.qrLogin.status === 'PENDING'"
-                :disabled="session.qrLogin.status === 'PENDING' || session.qrLogin.status === 'SCANNED' || session.qrLogin.status === 'CONFIRMED'"
+                :loading="session.loadingSession.value"
+                :disabled="session.loadingSession.value || session.qrLogin.status === 'PENDING' || session.qrLogin.status === 'SCANNED' || session.qrLogin.status === 'CONFIRMED'"
                 @click="session.beginQrLogin"
               >
                 {{ session.qrLogin.status === 'EXPIRED' || session.qrLogin.status === 'FAILED' ? '重新获取二维码' : '获取登录二维码' }}

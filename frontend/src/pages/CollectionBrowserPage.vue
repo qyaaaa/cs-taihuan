@@ -107,6 +107,7 @@ const normalizeItems = (items) => {
       nameZh: item.nameZh || item.name_zh || '',
       nameEn: item.nameEn || item.name_en || '',
       weapon: item.weapon || '',
+      image: item.image || item.image_url || '',
       rarity: item.rarity || '',
       minFloat: numberValue(item.minFloat, item.min_float),
       maxFloat: numberValue(item.maxFloat, item.max_float),
@@ -218,9 +219,20 @@ onMounted(loadCollections)
             <span>图案编号</span>
           </div>
           <article v-for="item in visibleItems" :key="item.skinId || `${item.nameEn}-${item.paintIndex}`" class="collection-item-row">
-            <div>
-              <strong>{{ displaySkinName(item) }}</strong>
-              <small>{{ displaySkinSub(item) }}</small>
+            <div class="skin-name-cell">
+              <img
+                v-if="item.image"
+                :src="item.image"
+                :alt="displaySkinName(item)"
+                class="skin-thumb"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              />
+              <span class="skin-thumb skin-thumb-empty" v-else></span>
+              <span class="skin-name-text">
+                <strong>{{ displaySkinName(item) }}</strong>
+                <small>{{ displaySkinSub(item) }}</small>
+              </span>
             </div>
             <span class="collection-rarity-pill" :style="{ borderColor: rarityColor(item.rarity), color: rarityColor(item.rarity) }">
               {{ rarityLabel(item.rarity) }}
@@ -239,3 +251,31 @@ onMounted(loadCollections)
     </div>
   </section>
 </template>
+
+<style scoped>
+.skin-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.skin-thumb {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 42px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.skin-thumb-empty {
+  display: inline-block;
+}
+.skin-name-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.skin-name-text small {
+  opacity: 0.6;
+}
+</style>
