@@ -235,6 +235,29 @@ public class CatalogService {
         return count == null ? 0 : count.intValue();
     }
 
+    /** Maps each catalog skin name to its (real) collection — used to resolve the true collection
+     *  of inventory items whose raw collection is a channel name (e.g. armory「武库通行证」). */
+    public Map<String, String> nameToCollection() {
+        Map<String, String> map = new java.util.HashMap<String, String>();
+        jdbcTemplate.query(
+            "SELECT name, collection_name FROM catalog_skin WHERE name IS NOT NULL AND collection_name IS NOT NULL",
+            (java.sql.ResultSet rs) -> { map.put(rs.getString("name"), rs.getString("collection_name")); }
+        );
+        return map;
+    }
+
+    /** Skin names (with wear suffix) currently in catalog for a collection + rarity. */
+    public List<String> collectionSkinNames(String collection, String rarity) {
+        if (collection == null || collection.trim().isEmpty() || rarity == null || rarity.trim().isEmpty()) {
+            return new java.util.ArrayList<String>();
+        }
+        return jdbcTemplate.query(
+            "SELECT name FROM catalog_skin WHERE collection_name = ? AND rarity = ?",
+            (rs, rowNum) -> rs.getString("name"),
+            collection.trim(), rarity.trim()
+        );
+    }
+
     private CatalogSkin mapCatalogSkin(java.sql.ResultSet rs) throws java.sql.SQLException {
         CatalogSkin skin = new CatalogSkin();
         skin.setName(rs.getString("name"));

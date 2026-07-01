@@ -5,12 +5,14 @@ import com.qyaaaa.cstaihuan.dto.SyncCatalogRequest;
 import com.qyaaaa.cstaihuan.dto.SyncCatalogResponse;
 import com.qyaaaa.cstaihuan.service.AsyncTaskService;
 import com.qyaaaa.cstaihuan.service.CatalogApplicationService;
+import java.util.Map;
 import javax.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,6 +30,15 @@ public class AccountCatalogController {
     @PostMapping("/sync")
     public SyncCatalogResponse syncCatalog(@PathVariable long accountId, @Valid @RequestBody(required = false) SyncCatalogRequest request) throws Exception {
         return catalogApplicationService.syncCatalog(accountId, request);
+    }
+
+    // Backfills outcome-tier skins (from the inventory's collections) that the user doesn't own,
+    // so trade-up outcome pools are complete and expected values aren't inflated by missing skins.
+    @PostMapping("/backfill-outcomes")
+    public Map<String, Object> backfillOutcomes(@PathVariable long accountId,
+            @RequestParam(value = "maxSkinSearches", required = false) Integer maxSkinSearches,
+            @RequestParam(value = "collection", required = false) String collection) throws Exception {
+        return catalogApplicationService.backfillOutcomeCatalog(accountId, maxSkinSearches, collection);
     }
 
     @PostMapping("/sync/task")

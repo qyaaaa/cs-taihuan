@@ -42,9 +42,13 @@ defineProps({
     type: Boolean,
     required: true,
   },
+  loadingBackfill: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-defineEmits(['optimize-plans', 'select-plan', 'go-data', 'update-filter'])
+defineEmits(['optimize-plans', 'select-plan', 'go-data', 'update-filter', 'backfill-collection'])
 </script>
 
 <template>
@@ -73,8 +77,10 @@ defineEmits(['optimize-plans', 'select-plan', 'go-data', 'update-filter'])
       :total-plan-count="planState.plans.length"
       :plan-filters="planFilters"
       :rarity-options="rarityOptions"
+      :loading-backfill="loadingBackfill"
       @select-plan="$emit('select-plan', $event)"
       @update-filter="(key, value) => $emit('update-filter', key, value)"
+      @backfill-collection="$emit('backfill-collection', $event)"
     />
   </section>
 </template>

@@ -37,9 +37,10 @@ public class CatalogApplicationService {
     private final BuffProperties buffProperties;
     private final CatalogSyncTaskStoreService catalogSyncTaskStoreService;
     private final BuffAccountService buffAccountService;
+    private final SkinFloatRangeService skinFloatRangeService;
     private final AtomicBoolean catalogSyncRunning = new AtomicBoolean(false);
 
-    public CatalogApplicationService(CatalogService catalogService, InventorySnapshotStoreService inventorySnapshotStoreService, BuffSessionService buffSessionService, BuffApiClient buffApiClient, BuffProperties buffProperties, CatalogSyncTaskStoreService catalogSyncTaskStoreService, BuffAccountService buffAccountService) {
+    public CatalogApplicationService(CatalogService catalogService, InventorySnapshotStoreService inventorySnapshotStoreService, BuffSessionService buffSessionService, BuffApiClient buffApiClient, BuffProperties buffProperties, CatalogSyncTaskStoreService catalogSyncTaskStoreService, BuffAccountService buffAccountService, SkinFloatRangeService skinFloatRangeService) {
         this.catalogService = catalogService;
         this.inventorySnapshotStoreService = inventorySnapshotStoreService;
         this.buffSessionService = buffSessionService;
@@ -47,6 +48,7 @@ public class CatalogApplicationService {
         this.buffProperties = buffProperties;
         this.catalogSyncTaskStoreService = catalogSyncTaskStoreService;
         this.buffAccountService = buffAccountService;
+        this.skinFloatRangeService = skinFloatRangeService;
     }
 
     public SyncCatalogResponse syncCatalog(SyncCatalogRequest request) throws Exception {
@@ -63,6 +65,172 @@ public class CatalogApplicationService {
 
     public SyncCatalogResponse syncCatalogAsync(long accountId, SyncCatalogRequest request, AsyncTaskService.TaskProgress progress) throws Exception {
         return syncCatalogWithLock(accountId, request, progress);
+    }
+
+    /**
+     * Backfills outcome-tier skins the user doesn't own so trade-up outcome pools are complete.
+     * For every (collection, next-rarity) pair reachable from the inventory, the authoritative
+     * roster comes from the bundled skin_float_range data; any skin missing from catalog is
+     * resolved to a BUFF goods via search and fetched (with all wear variants). Throttled and
+     * bounded by maxSkinSearches to keep BUFF load low.
+     */
+    public Map<String, Object> backfillOutcomeCatalog(long accountId, Integer maxSkinSearches, String collectionFilter) throws Exception {
+        String wanted = collectionFilter == null ? null : collectionFilter.trim();
+        buffAccountService.requireAccount(accountId);
+        InventorySnapshotRecord snapshot = resolveSnapshot(accountId, null);
+        List<BuffItem> inventory = inventorySnapshotStoreService.loadItems(snapshot.getId());
+        if (inventory.isEmpty()) {
+            throw new IllegalArgumentException(ErrorMessages.CATALOG_SYNC_EMPTY_INVENTORY);
+        }
+        String cookie = buffSessionService.resolveCookie(accountId, null);
+        String baseUrl = buffProperties.getBaseUrl();
+        String game = buffProperties.getGame();
+        long interval = resolveRequestIntervalMillis();
+        int budget = maxSkinSearches == null ? 60 : Math.max(1, maxSkinSearches.intValue());
+
+        // Resolve each item's REAL collection by name (raw inventory collection is a channel name
+        // for armory skins, e.g. 武库通行证; the catalog holds the mapped real collection).
+        Map<String, String> nameToCollection = catalogService.nameToCollection();
+
+        // Needed (collection, output-rarity) pairs = each inventory item's collection + the tier it crafts into.
+        Map<String, String[]> pairs = new LinkedHashMap<String, String[]>();
+        for (BuffItem item : inventory) {
+            String rawCollection = nameToCollection.get(item.getName());
+            if (rawCollection == null) {
+                rawCollection = item.getCollection();
+            }
+            String collection = rawCollection == null ? null : rawCollection.trim();
+            // filter_rarity holds the normalized tier (mil-spec/industrial/...); rarity is the raw
+            // BUFF internal name (rare_weapon/...), which Rarity.next can't read.
+            String inRarity = item.getFilterRarity() == null ? null : item.getFilterRarity().trim();
+            if (collection == null || collection.isEmpty() || inRarity == null || inRarity.isEmpty()) {
+                continue;
+            }
+            if (wanted != null && !wanted.isEmpty() && !collection.contains(wanted)) {
+                continue;
+            }
+            String outRarity = com.qyaaaa.cstaihuan.Rarity.next(inRarity);
+            if (outRarity == null || outRarity.isEmpty()) {
+                continue;
+            }
+            pairs.putIfAbsent(collection + "" + outRarity, new String[] {collection, outRarity});
+        }
+
+        int searched = 0;
+        int matchedSkins = 0;
+        boolean rateLimited = false;
+        List<CatalogSkin> toUpsert = new ArrayList<CatalogSkin>();
+        java.util.Set<String> processedGoods = new java.util.HashSet<String>();
+
+        outer:
+        for (String[] pair : pairs.values()) {
+            String collection = pair[0];
+            String outRarity = pair[1];
+            // 只把「已有 ≥2 个磨损档」的皮肤算作已完成；只有 1 档的(旧补全遗留)当作缺失重抓，补齐所有档。
+            java.util.Set<String> have = completeBaseNames(catalogService.collectionSkinNames(collection, outRarity));
+            for (String rosterName : skinFloatRangeService.collectionSkinNames(collection, outRarity)) {
+                String key = baseNameKey(rosterName);
+                if (key.isEmpty() || have.contains(key) || isSouvenirOrStatTrak(rosterName)) {
+                    continue;
+                }
+                if (searched >= budget) {
+                    rateLimited = false;
+                    break outer;
+                }
+                searched++;
+                try {
+                    List<Map<String, Object>> hits = buffApiClient.searchGoods(baseUrl, cookie, game, searchKeyword(rosterName), 1);
+                    String matchedGoodsId = null;
+                    for (Map<String, Object> hit : hits) {
+                        String hitName = hit.get("name") == null ? "" : String.valueOf(hit.get("name"));
+                        if (baseNameKey(hitName).equals(key) && !isSouvenirOrStatTrak(hitName)) {
+                            matchedGoodsId = String.valueOf(hit.get("goodsId"));
+                            break;
+                        }
+                    }
+                    sleepQuiet(interval);
+                    if (matchedGoodsId == null || matchedGoodsId.isEmpty() || !processedGoods.add(matchedGoodsId)) {
+                        continue;
+                    }
+                    Map<String, Object> detail = buffApiClient.fetchGoodsDetail(baseUrl, cookie, game, matchedGoodsId);
+                    CatalogSkin skin = buffApiClient.parseCatalogSkinFromGoodsDetail(detail, collection);
+                    if (skin != null) {
+                        toUpsert.add(skin);
+                        // 用基础皮肤元数据 + relative_goods 构建全部磨损档，避免只入一个档导致磨损/价格错配。
+                        toUpsert.addAll(buffApiClient.wearVariantsFromRelativeGoods(detail, skin));
+                    }
+                    matchedSkins++;
+                    sleepQuiet(interval);
+                } catch (BuffRateLimitException ex) {
+                    rateLimited = true;
+                    break outer;
+                } catch (Exception ex) {
+                    log.warn("Outcome backfill failed, collection={}, skin={}, reason={}", collection, rosterName, ex.getMessage());
+                }
+            }
+        }
+
+        int persisted = toUpsert.isEmpty() ? 0 : catalogService.upsertAll(toUpsert);
+        Map<String, Object> summary = new LinkedHashMap<String, Object>();
+        summary.put("accountId", Long.valueOf(accountId));
+        summary.put("pairsScanned", Integer.valueOf(pairs.size()));
+        summary.put("skinsSearched", Integer.valueOf(searched));
+        summary.put("skinsMatched", Integer.valueOf(matchedSkins));
+        summary.put("rowsPersisted", Integer.valueOf(persisted));
+        summary.put("rateLimited", Boolean.valueOf(rateLimited));
+        summary.put("budgetExhausted", Boolean.valueOf(searched >= budget));
+        log.info("Outcome backfill done, accountId={}, pairs={}, searched={}, matched={}, persisted={}, rateLimited={}",
+            Long.valueOf(accountId), Integer.valueOf(pairs.size()), Integer.valueOf(searched),
+            Integer.valueOf(matchedSkins), Integer.valueOf(persisted), Boolean.valueOf(rateLimited));
+        return summary;
+    }
+
+    // Base skins that already have >= 2 wear variants in catalog (considered wear-complete enough).
+    // Skins with 0 or 1 variant are treated as gaps so a re-fetch fills in all their wear tiers.
+    private java.util.Set<String> completeBaseNames(List<String> variantNames) {
+        Map<String, Integer> counts = new java.util.HashMap<String, Integer>();
+        for (String name : variantNames) {
+            String key = baseNameKey(name);
+            if (!key.isEmpty()) {
+                Integer c = counts.get(key);
+                counts.put(key, c == null ? 1 : c + 1);
+            }
+        }
+        java.util.Set<String> complete = new java.util.HashSet<String>();
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            if (e.getValue().intValue() >= 2) {
+                complete.add(e.getKey());
+            }
+        }
+        return complete;
+    }
+
+    private static String baseNameKey(String name) {
+        // 强匹配键：去磨损/StatTrak/纪念品标记 + 武器别名 + 去空格，跨 BUFF/名单/catalog 一致匹配。
+        return com.qyaaaa.cstaihuan.util.WearSuffix.toRangeMatchKey(name);
+    }
+
+    // BUFF search matches better on space-separated tokens than on the " | " separator.
+    private static String searchKeyword(String name) {
+        if (name == null) {
+            return "";
+        }
+        return name.replace("|", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    private static boolean isSouvenirOrStatTrak(String name) {
+        if (name == null) {
+            return false;
+        }
+        return name.contains("纪念品") || name.toLowerCase().contains("stattrak");
+    }
+
+    private void sleepQuiet(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // 手动同步、异步任务和定时任务共用同一把服务级锁，避免同时打 BUFF 详情接口导致限流。
@@ -110,6 +278,10 @@ public class CatalogApplicationService {
         long cacheFreshMillis = resolveCacheFreshMillis();
         long freshAfterTimestamp = System.currentTimeMillis() - cacheFreshMillis;
         Set<String> freshGoodsIds = catalogService.loadFreshGoodsIds(freshAfterTimestamp);
+        // Also skip goods already attempted (succeeded or skipped) within the freshness window —
+        // including those that yielded no skin and thus aren't in catalog_skin. Without this they
+        // get revived to PENDING and re-fetched every run, eating the budget and starving the backlog.
+        freshGoodsIds.addAll(catalogSyncTaskStoreService.loadRecentlyCompletedGoodsIds(snapshot.getId(), freshAfterTimestamp));
         Map<String, String> seedGoodsToSyncByGoodsId = new LinkedHashMap<String, String>();
         for (Map.Entry<String, String> entry : seedCollectionsByGoodsId.entrySet()) {
             if (!freshGoodsIds.contains(entry.getKey())) {
@@ -227,23 +399,29 @@ public class CatalogApplicationService {
                         }
                     }
                 }
-                if (!parsedByIdentity.isEmpty()) {
+                if (parsedByIdentity.isEmpty()) {
+                    // No parseable skin (case / delisted / empty payload). Skip it and remember it
+                    // for this run + the freshness window so it stops being re-fetched every round.
+                    freshGoodsIds.add(goodsId);
+                    catalogSyncTaskStoreService.markSkipped(task.getId(),
+                        "详情无可解析皮肤数据，已跳过（冷却 " + (cacheFreshMillis / 3600000L) + "h 后重试）。");
+                } else {
                     catalogByIdentity.putAll(parsedByIdentity);
                     catalogService.upsertAll(new ArrayList<CatalogSkin>(parsedByIdentity.values()));
-                }
 
-                List<String> relatedGoodsIds = buffApiClient.extractRelatedGoodsIds(payload);
-                for (String relatedGoodsId : relatedGoodsIds) {
-                    if (relatedGoodsId == null || relatedGoodsId.trim().isEmpty()) {
-                        continue;
+                    List<String> relatedGoodsIds = buffApiClient.extractRelatedGoodsIds(payload);
+                    for (String relatedGoodsId : relatedGoodsIds) {
+                        if (relatedGoodsId == null || relatedGoodsId.trim().isEmpty()) {
+                            continue;
+                        }
+                        String normalizedGoodsId = relatedGoodsId.trim();
+                        if (freshGoodsIds.contains(normalizedGoodsId)) {
+                            continue;
+                        }
+                        catalogSyncTaskStoreService.enqueue(accountId, snapshot.getId(), normalizedGoodsId, derivedCollection);
                     }
-                    String normalizedGoodsId = relatedGoodsId.trim();
-                    if (freshGoodsIds.contains(normalizedGoodsId)) {
-                        continue;
-                    }
-                    catalogSyncTaskStoreService.enqueue(accountId, snapshot.getId(), normalizedGoodsId, derivedCollection);
+                    catalogSyncTaskStoreService.markSucceeded(task.getId());
                 }
-                catalogSyncTaskStoreService.markSucceeded(task.getId());
             } catch (Exception ex) {
                 catalogSyncTaskStoreService.markFailed(task.getId(), ex.getMessage());
                 log.warn("Catalog goods parse or persist failed, snapshotId={}, goodsId={}, retryCount={}, reason={}",

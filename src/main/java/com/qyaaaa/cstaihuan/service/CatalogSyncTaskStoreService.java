@@ -188,6 +188,23 @@ public class CatalogSyncTaskStoreService {
         return count == null ? 0 : count.intValue();
     }
 
+    // Goods that were already fetched and resolved (succeeded or skipped) within the freshness
+    // window. Used to skip re-fetching them this run — notably goods that yield no parseable skin
+    // (cases / delisted / empty payloads) which never land in catalog_skin and would otherwise be
+    // revived to PENDING and re-fetched every run, starving the real backlog.
+    public java.util.Set<String> loadRecentlyCompletedGoodsIds(long snapshotId, long attemptedAfter) {
+        List<String> rows = jdbcTemplate.query(
+            "SELECT goods_id FROM catalog_sync_task " +
+                "WHERE snapshot_id = ? AND status IN (?, ?) AND last_attempt_at IS NOT NULL AND last_attempt_at >= ?",
+            (rs, rowNum) -> rs.getString("goods_id"),
+            Long.valueOf(snapshotId),
+            STATUS_SUCCEEDED,
+            STATUS_SKIPPED,
+            Long.valueOf(attemptedAfter)
+        );
+        return new java.util.LinkedHashSet<String>(rows);
+    }
+
     private void updateStatus(long taskId, String status, String reason) {
         jdbcTemplate.update(
             "UPDATE catalog_sync_task SET status = ?, failure_reason = ?, updated_at = ? WHERE id = ?",

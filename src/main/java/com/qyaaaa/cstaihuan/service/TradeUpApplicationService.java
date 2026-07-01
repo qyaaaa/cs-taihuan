@@ -42,8 +42,9 @@ public class TradeUpApplicationService {
     private final TradeUpNextTierStoreService tradeUpNextTierStoreService;
     private final CatalogSyncTaskStoreService catalogSyncTaskStoreService;
     private final BuffAccountService buffAccountService;
+    private final SkinFloatRangeService skinFloatRangeService;
 
-    public TradeUpApplicationService(InventorySnapshotStoreService inventorySnapshotStoreService, CatalogService catalogService, TradeUpProperties tradeUpProperties, BuffProperties buffProperties, TradeUpNextTierStoreService tradeUpNextTierStoreService, CatalogSyncTaskStoreService catalogSyncTaskStoreService, BuffAccountService buffAccountService) {
+    public TradeUpApplicationService(InventorySnapshotStoreService inventorySnapshotStoreService, CatalogService catalogService, TradeUpProperties tradeUpProperties, BuffProperties buffProperties, TradeUpNextTierStoreService tradeUpNextTierStoreService, CatalogSyncTaskStoreService catalogSyncTaskStoreService, BuffAccountService buffAccountService, SkinFloatRangeService skinFloatRangeService) {
         this.inventorySnapshotStoreService = inventorySnapshotStoreService;
         this.catalogService = catalogService;
         this.tradeUpProperties = tradeUpProperties;
@@ -51,6 +52,7 @@ public class TradeUpApplicationService {
         this.tradeUpNextTierStoreService = tradeUpNextTierStoreService;
         this.catalogSyncTaskStoreService = catalogSyncTaskStoreService;
         this.buffAccountService = buffAccountService;
+        this.skinFloatRangeService = skinFloatRangeService;
     }
 
     // 方案页请求入口：加载快照和 catalog 后交给优化器；全部档位时逐档取 topK，避免低档位被全局排序挤掉。
@@ -71,6 +73,7 @@ public class TradeUpApplicationService {
         int topK = request.getTopK() == null ? 5 : request.getTopK().intValue();
 
         TradeUpOptimizer optimizer = new TradeUpOptimizer(catalog, saleFeeRate, tradeUpProperties.getOutputPriceFactors(), tradeUpProperties.getOutputPriceBands());
+        optimizer.setSkinRanges(skinFloatRangeService.nameToRange());
         List<BuffItem> enrichedInventory = optimizer.enrichInventory(inventory);
         List<TradeUpPlan> plans = isAllRarity(request.getRarity())
             ? findBestContractsByRarity(optimizer, enrichedInventory, topK, maxItemsPerRarity, maxCombinations, request)
@@ -127,6 +130,7 @@ public class TradeUpApplicationService {
         List<CatalogSkin> catalog = catalogService.loadAll();
 
         TradeUpOptimizer optimizer = new TradeUpOptimizer(catalog, tradeUpProperties.getSaleFeeRate());
+        optimizer.setSkinRanges(skinFloatRangeService.nameToRange());
         List<BuffItem> enrichedInventory = optimizer.enrichInventory(inventory);
 
         Map<String, List<CatalogSkin>> targetByCollectionAndRarity = new HashMap<String, List<CatalogSkin>>();

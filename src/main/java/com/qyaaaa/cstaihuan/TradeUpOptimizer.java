@@ -46,6 +46,11 @@ public final class TradeUpOptimizer {
     private final Map<String, Double> outputPriceFactors = new HashMap<String, Double>();
     private final Map<String, List<FloatPriceBand>> outputPriceBands = new HashMap<String, List<FloatPriceBand>>();
     private final Map<String, CatalogSkin> catalogByName = new HashMap<String, CatalogSkin>();
+    // Base skin name (wear suffix stripped) -> its per-wear catalog variants, for pricing an
+    // input material at the catalog price of its own wear tier rather than the skin's floor price.
+    private final Map<String, List<CatalogSkin>> catalogVariantsByBaseName = new HashMap<String, List<CatalogSkin>>();
+    // 皮肤名(去磨损后缀+小写) -> 权威 paint 范围[min,max]，用于归一化输入磨损与缩放产出磨损。
+    private Map<String, double[]> skinRanges = new HashMap<String, double[]>();
     private final Map<String, List<OutputFamily>> outputFamiliesByCollectionRarityAndTrack = new HashMap<String, List<OutputFamily>>();
     private final Map<String, List<OutputFamily>> statTrakGoldKnifeFamiliesByCollection = new HashMap<String, List<OutputFamily>>();
 
@@ -87,6 +92,13 @@ public final class TradeUpOptimizer {
         Map<String, OutputFamily> outputFamilyByIdentity = new LinkedHashMap<String, OutputFamily>();
         for (CatalogSkin skin : catalog) {
             catalogByName.put(skin.getName(), skin);
+            String baseKey = normalizeKey(baseSkinName(skin.getName()));
+            List<CatalogSkin> variants = catalogVariantsByBaseName.get(baseKey);
+            if (variants == null) {
+                variants = new ArrayList<CatalogSkin>();
+                catalogVariantsByBaseName.put(baseKey, variants);
+            }
+            variants.add(skin);
 
             // 纪念品可作为汰换素材投入，但只能从纪念品包开出、不能作为汰换产物，因此仅从产物池排除。
             if (isSouvenirName(skin.getName())) {
@@ -120,17 +132,96 @@ public final class TradeUpOptimizer {
     }
 
     // 用 catalog 中的标准收藏品和品质补齐库存数据，避免 BUFF 库存字段缺失导致方案漏算。
+    // 注入皮肤权威 paint 范围（来自 skin_float_range），供归一化磨损计算使用；未注入则回退旧行为。
+    public void setSkinRanges(Map<String, double[]> ranges) {
+        this.skinRanges = ranges == null ? new HashMap<String, double[]>() : ranges;
+    }
+
+    // 皮肤的权威 paint 范围[min,max]；查不到返回 null（调用方回退）。
+    private double[] skinRange(String name) {
+        if (name == null) {
+            return null;
+        }
+        return skinRanges.get(com.qyaaaa.cstaihuan.util.WearSuffix.toRangeMatchKey(name));
+    }
+
+    // 输入磨损归一化到其皮肤 paint 范围内的 [0,1]；无范围时直接用原始磨损（clamp 到 [0,1]）。
+    private double normalizedInputFloat(String name, double floatValue) {
+        double[] range = skinRange(name);
+        double norm;
+        if (range != null && range[1] > range[0]) {
+            norm = (floatValue - range[0]) / (range[1] - range[0]);
+        } else {
+            norm = floatValue;
+        }
+        if (norm < 0.0d) {
+            norm = 0.0d;
+        }
+        if (norm > 1.0d) {
+            norm = 1.0d;
+        }
+        return norm;
+    }
+
     public List<BuffItem> enrichInventory(List<BuffItem> items) {
         List<BuffItem> enriched = new ArrayList<BuffItem>();
         for (BuffItem item : items) {
             CatalogSkin skin = catalogByName.get(item.getName());
+            // Value the material at its own wear tier's catalog price; the inventory price is the
+            // skin's floor (sell_min_price), which under-prices low-wear inputs in the EV.
+            double wearPrice = wearTierInputPrice(item);
             if (skin != null) {
-                enriched.add(item.withCatalog(skin));
+                enriched.add(item.withCatalog(skin, wearPrice));
             } else if (item.getCollection() != null && item.getFilterRarity() != null) {
-                enriched.add(item);
+                enriched.add(item.withPrice(wearPrice));
             }
         }
         return enriched;
+    }
+
+    // Resolves the catalog price of an input material at its own wear tier. Prefers an exact
+    // (wear-suffixed) name match, then the same base skin's variant matching the item's float tier,
+    // and finally falls back to the inventory price so a missing catalog row never breaks the EV.
+    private double wearTierInputPrice(BuffItem item) {
+        CatalogSkin exact = catalogByName.get(item.getName());
+        if (exact != null && exact.getPrice() > 0.0d) {
+            return exact.getPrice();
+        }
+        Double floatValue = item.getFloatValue();
+        if (floatValue != null) {
+            CatalogSkin variant = variantForFloatTier(
+                catalogVariantsByBaseName.get(normalizeKey(baseSkinName(item.getName()))), floatValue.doubleValue());
+            if (variant != null && variant.getPrice() > 0.0d) {
+                return variant.getPrice();
+            }
+        }
+        return item.getPrice();
+    }
+
+    // Picks the variant whose name's wear tier matches the float's standard CS wear tier. Mirrors
+    // OutputFamily.selectVariantForFloat: BUFF's per-exterior paintwear_range is unreliable, so we
+    // match by wear tier rather than the variant's min/max float.
+    private static CatalogSkin variantForFloatTier(List<CatalogSkin> variants, double floatValue) {
+        if (variants == null || variants.isEmpty()) {
+            return null;
+        }
+        int targetTier = com.qyaaaa.cstaihuan.util.WearSuffix.wearTierForFloat(floatValue);
+        CatalogSkin tierFallback = null;
+        int bestTierDistance = Integer.MAX_VALUE;
+        for (CatalogSkin variant : variants) {
+            int variantTier = com.qyaaaa.cstaihuan.util.WearSuffix.wearTierOfName(variant.getName());
+            if (variantTier == targetTier) {
+                return variant;
+            }
+            if (variantTier >= 0) {
+                int tierDistance = Math.abs(variantTier - targetTier);
+                if (tierDistance < bestTierDistance) {
+                    bestTierDistance = tierDistance;
+                    tierFallback = variant;
+                }
+            }
+        }
+        return tierFallback != null ? tierFallback : variants.get(0);
     }
 
     public List<TradeUpPlan> findBestContracts(List<BuffItem> items, int topK, int maxItemsPerRarity, int maxCombinations) {
@@ -254,7 +345,8 @@ public final class TradeUpOptimizer {
 
     private static int comparePrimary(TradeUpPlan left, TradeUpPlan right, String sortBy) {
         if ("expectedOutputValue".equals(sortBy)) {
-            return Double.compare(right.getExpectedOutputValue(), left.getExpectedOutputValue());
+            // 「期望值高到低」按 期望产出/投入 的比例排序，而非绝对金额，使便宜高效的合同也能靠前。
+            return Double.compare(expectedValueRatio(right), expectedValueRatio(left));
         }
         if ("roi".equals(sortBy)) {
             return Double.compare(right.getRoi(), left.getRoi());
@@ -266,6 +358,12 @@ public final class TradeUpOptimizer {
             return Integer.valueOf(rarityRank(right.getRarity())).compareTo(Integer.valueOf(rarityRank(left.getRarity())));
         }
         return Double.compare(right.getExpectedProfit(), left.getExpectedProfit());
+    }
+
+    // 期望产出相对投入的比例（期望产出/投入）。投入为 0 时返回 0，避免除零。
+    private static double expectedValueRatio(TradeUpPlan plan) {
+        double cost = plan.getInputCost();
+        return cost > 0.0d ? plan.getExpectedOutputValue() / cost : 0.0d;
     }
 
     private static int rarityRank(String rarity) {
@@ -366,16 +464,22 @@ public final class TradeUpOptimizer {
     private TradeUpPlan evaluateContract(String rarity, List<BuffItem> combo) {
         double totalCost = 0.0d;
         double totalFloat = 0.0d;
+        // CS 汰换用「归一化平均」：每个输入磨损先按其自身皮肤 paint 范围归一到 [0,1] 再平均，
+        // 而非原始平均。缺皮肤范围时回退用原始磨损（等价于假设 [0,1]）。
+        double totalNormalized = 0.0d;
         Map<String, Integer> collectionCounts = new HashMap<String, Integer>(mapCapacity(combo.size()));
         String targetRarity = Rarity.next(rarity);
         for (BuffItem item : combo) {
             totalCost += item.getPrice();
-            totalFloat += item.getFloatValue();
+            double floatValue = item.getFloatValue();
+            totalFloat += floatValue;
+            totalNormalized += normalizedInputFloat(item.getName(), floatValue);
             String collectionKey = contractCollectionKey(item, targetRarity);
             Integer count = collectionCounts.get(collectionKey);
             collectionCounts.put(collectionKey, count == null ? 1 : count + 1);
         }
         double averageFloat = totalFloat / combo.size();
+        double averageNormalized = totalNormalized / combo.size();
         double expectedValue = 0.0d;
         List<Outcome> outcomes = new ArrayList<Outcome>();
         boolean statTrakContract = isStatTrakItem(combo.get(0));
@@ -387,14 +491,20 @@ public final class TradeUpOptimizer {
             }
             double probability = (double) entry.getValue().intValue() / (double) combo.size() / (double) families.size();
             for (OutputFamily family : families) {
-                double estimatedFloat = estimateOutputFloat(averageFloat, family.minFloat, family.maxFloat);
+                // 用产出皮肤的权威 paint 范围（skin_float_range）；查不到回退到 catalog 各档并集。
+                double[] outRange = skinRange(family.name);
+                double outMin = outRange != null ? outRange[0] : family.minFloat;
+                double outMax = outRange != null ? outRange[1] : family.maxFloat;
+                double estimatedFloat = estimateOutputFloat(averageNormalized, outMin, outMax);
                 CatalogSkin pricedSkin = family.selectVariantForFloat(estimatedFloat);
                 if (pricedSkin == null) {
                     continue;
                 }
                 double estimatedSalePrice = adjustedOutputPrice(pricedSkin, estimatedFloat) * (1.0d - saleFeeRate);
                 expectedValue += probability * estimatedSalePrice;
-                outcomes.add(new Outcome(pricedSkin, probability, estimatedFloat, estimatedSalePrice));
+                // 磨损档名按估算磨损直接判定（exterior 是绝对磨损的固定函数），不受 catalog 档位是否齐全影响。
+                CatalogSkin displaySkin = withDisplayWear(pricedSkin, estimatedFloat);
+                outcomes.add(new Outcome(displaySkin, probability, estimatedFloat, estimatedSalePrice));
             }
         }
 
@@ -402,7 +512,7 @@ public final class TradeUpOptimizer {
 
         double profit = expectedValue - totalCost;
         double roi = totalCost == 0.0d ? 0.0d : profit / totalCost;
-        return new TradeUpPlan(rarity, round2(totalCost), round2(expectedValue), round2(profit), round4(roi), round6(averageFloat), new ArrayList<BuffItem>(combo), outcomes);
+        return new TradeUpPlan(rarity, round2(totalCost), round2(expectedValue), round2(profit), round4(roi), averageFloat, new ArrayList<BuffItem>(combo), outcomes);
     }
 
     // 产出池按收藏品/目标品质/暗金状态锁定；暗金金色合同再剔除手套，只保留刀。
@@ -496,6 +606,22 @@ public final class TradeUpOptimizer {
     }
 
     // 产出磨损使用 CS 汰换线性公式，并限制在该皮肤自身 Min/Max Float 区间内。
+    // 复制产出皮肤，仅把磨损后缀改成与估算磨损匹配的档位（价格等其它字段不变）。
+    private static CatalogSkin withDisplayWear(CatalogSkin skin, double estimatedFloat) {
+        CatalogSkin copy = new CatalogSkin();
+        copy.setName(com.qyaaaa.cstaihuan.util.WearSuffix.withZhWearForFloat(skin.getName(), estimatedFloat));
+        copy.setGoodsId(skin.getGoodsId());
+        copy.setCollection(skin.getCollection());
+        copy.setRarity(skin.getRarity());
+        copy.setCategoryKey(skin.getCategoryKey());
+        copy.setQualityLabel(skin.getQualityLabel());
+        copy.setMinFloat(skin.getMinFloat());
+        copy.setMaxFloat(skin.getMaxFloat());
+        copy.setPrice(skin.getPrice());
+        copy.setImageUrl(skin.getImageUrl());
+        return copy;
+    }
+
     private double estimateOutputFloat(double averageInputFloat, double minFloat, double maxFloat) {
         double value = minFloat + averageInputFloat * (maxFloat - minFloat);
         if (value < minFloat) {
@@ -504,7 +630,8 @@ public final class TradeUpOptimizer {
         if (value > maxFloat) {
             value = maxFloat;
         }
-        return round6(value);
+        // 不做四舍五入，保留全精度磨损，和 BUFF 一致（前端展示完整值）。
+        return value;
     }
 
     private static String outputFamilyGroupKey(String collection, String rarity, boolean statTrak) {
@@ -518,9 +645,11 @@ public final class TradeUpOptimizer {
     }
 
     private static String outputFamilyKey(CatalogSkin skin) {
+        // 用强匹配键做皮肤名分量：去空格/武器别名/StatTrak标记，避免同一皮肤因命名差异(如「USP 消音版」
+        // vs「USP消音版」)被拆成两个产物族、产出重复产物。StatTrak 与普通仍由下面的 statTrak 标志区分。
         return new StringBuilder(outputFamilyGroupKey(skin.getCollection(), skin.getRarity(), isStatTrakName(skin.getName())))
             .append(KEY_SEPARATOR)
-            .append(baseSkinName(skin.getName()))
+            .append(com.qyaaaa.cstaihuan.util.WearSuffix.toRangeMatchKey(skin.getName()))
             .toString();
     }
 

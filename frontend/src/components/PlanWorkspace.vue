@@ -26,9 +26,16 @@ const props = defineProps({
     type: Array,
     required: true,
   },
+  loadingBackfill: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-defineEmits(['select-plan', 'update-filter'])
+defineEmits(['select-plan', 'update-filter', 'backfill-collection'])
+
+// 方案涉及的所有收藏品（混合合同可能跨多个）；用于定向补全这些收藏品缺失的产物档皮肤。
+const planCollections = (plan) => [...new Set((plan?.inputs || []).map((item) => item?.collection).filter(Boolean))]
 
 const detailPanel = ref(null)
 const planListMaxHeight = ref('')
@@ -83,6 +90,17 @@ const rarityLabels = {
   gold: '金色',
 }
 
+// 稀有度配色，和收藏品图鉴(CollectionBrowserPage)保持一致，按档位区分颜色。
+const rarityColors = {
+  consumer: '#8f9aaa',
+  industrial: '#5aa3ff',
+  'mil-spec': '#4d6bff',
+  restricted: '#8f6bff',
+  classified: '#d85cff',
+  covert: '#ef5b69',
+  gold: '#f6c453',
+}
+
 const sortOptions = [
   { value: 'expectedOutputValue', label: '期望值高到低' },
   { value: 'expectedProfit', label: '利润高到低' },
@@ -106,6 +124,15 @@ const contractOptions = [
 const currency = (value) => `¥${Number(value || 0).toFixed(2)}`
 const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`
 const rarityLabel = (rarity) => rarityLabels[rarity] || rarity || '未知档位'
+const rarityColor = (rarity) => rarityColors[rarity] || 'var(--accent-strong)'
+// 完整精度磨损，不省略（和 BUFF 一致）。
+const fullFloat = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '--'
+  }
+  const n = Number(value)
+  return Number.isFinite(n) ? String(n) : '--'
+}
 const nextRarity = (rarity) => rarityOrder[rarityOrder.indexOf(rarity) + 1]
 const metricValue = (item, camelKey, snakeKey) => item?.[camelKey] ?? item?.[snakeKey]
 const firstText = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim())
@@ -215,7 +242,7 @@ const contractTitle = (rarity) => {
         >
           <div class="plan-row-top">
             <span>#{{ String(index + 1).padStart(2, '0') }}</span>
-            <strong>{{ rarityLabel(plan.rarity) }}</strong>
+            <strong :style="{ color: rarityColor(plan.rarity) }">{{ rarityLabel(plan.rarity) }}</strong>
           </div>
           <h3>{{ contractTitle(plan.rarity) }}</h3>
           <div class="plan-row-metrics">
@@ -265,6 +292,18 @@ const contractTitle = (rarity) => {
           </div>
         </div>
 
+        <div class="detail-backfill">
+          <span>产物 {{ (selectedPlan.outcomes || []).length }} 个 · 收藏品「{{ planCollections(selectedPlan).join(' / ') || '未知' }}」</span>
+          <button
+            type="button"
+            class="inline-link-button"
+            :disabled="loadingBackfill || !planCollections(selectedPlan).length"
+            @click="$emit('backfill-collection', planCollections(selectedPlan))"
+          >
+            {{ loadingBackfill ? '补全中…（搜 BUFF 抓缺价皮肤）' : '产物不全？补全该方案收藏品产物' }}
+          </button>
+        </div>
+
         <div v-if="isGoldContract(selectedPlan) && isStatTrakPlan(selectedPlan)" class="plan-insight">
           <strong>StatTrak 金色合成</strong>
           <span>该方案只使用可通向暗金刀的隐秘输入；暗金手套下级无法参与汰换，因此不会和暗金刀下级混入同一份合同。</span>
@@ -282,7 +321,7 @@ const contractTitle = (rarity) => {
                 </div>
                 <div class="detail-side">
                   <span>{{ currency(item.price) }}</span>
-                  <em>{{ metricValue(item, 'floatValue', 'float_value') == null ? '--' : Number(metricValue(item, 'floatValue', 'float_value')).toFixed(4) }}</em>
+                  <em>{{ fullFloat(metricValue(item, 'floatValue', 'float_value')) }}</em>
                 </div>
               </div>
             </div>
@@ -298,7 +337,7 @@ const contractTitle = (rarity) => {
                 </div>
                 <div class="detail-side">
                   <span>{{ percent(outcome.probability) }}</span>
-                  <em>磨损 {{ metricValue(outcome, 'estimatedFloat', 'estimated_float') == null ? '--' : Number(metricValue(outcome, 'estimatedFloat', 'estimated_float')).toFixed(6) }}</em>
+                  <em>磨损 {{ fullFloat(metricValue(outcome, 'estimatedFloat', 'estimated_float')) }}</em>
                   <em>{{ currency(outcome.estimatedSalePrice) }}</em>
                 </div>
               </div>

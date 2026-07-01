@@ -20,6 +20,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -30,13 +35,25 @@ import org.springframework.stereotype.Service;
 public class BuffQrLoginService {
     private static final Logger log = LoggerFactory.getLogger(BuffQrLoginService.class);
     private static final long SESSION_TIMEOUT_MILLIS = 5L * 60L * 1000L; // 5 minutes
-    private static final long QR_RENDER_TIMEOUT_MILLIS = 12000L; // max wait for QR image to appear
+    private static final long QR_RENDER_TIMEOUT_MILLIS = 22000L; // max wait for QR image to appear (BUFF render varies ~6-22s; returns as soon as found)
     private static final long QR_POLL_INTERVAL_MILLIS = 250L; // poll interval while waiting for QR
     private static final String BUFF_LOGIN_URL = "https://buff.163.com/account/login";
+    // A pre-warmed QR is only handed out while this fresh, so we never serve a BUFF-expired code.
+    private static final long WARM_MAX_AGE_MILLIS = 120_000L;
+    // How often the background refresher rebuilds the warm session before it ages out.
+    private static final long WARM_REFRESH_INTERVAL_MILLIS = 60_000L;
 
     private final BuffSessionService buffSessionService;
     private final BuffAccountService buffAccountService;
     private final Map<String, QrLoginSession> sessions = new ConcurrentHashMap<>();
+
+    // Playwright (Java) is not thread-safe: a single driver connection backs the whole browser,
+    // so concurrent calls from the warm-pool thread and request threads must be serialized.
+    private final ReentrantLock pwLock = new ReentrantLock(true);
+    // One pre-rendered session waiting to be handed out instantly on the next start request.
+    private final AtomicReference<QrLoginSession> warmSession = new AtomicReference<>();
+    private ScheduledExecutorService warmExecutor;
+    private volatile boolean shuttingDown = false;
 
     private Playwright playwright;
     private Browser browser;
@@ -59,6 +76,16 @@ public class BuffQrLoginService {
                     "--disable-gpu"
                 )));
             log.info("Playwright browser launched successfully");
+            // Single thread keeps every warm build serialized w.r.t. each other; the pwLock keeps
+            // it serialized w.r.t. request threads. Pre-render one QR now and keep it fresh.
+            warmExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "qr-warm-pool");
+                t.setDaemon(true);
+                return t;
+            });
+            warmExecutor.execute(this::ensureWarmFresh);
+            warmExecutor.scheduleWithFixedDelay(this::ensureWarmFresh,
+                WARM_REFRESH_INTERVAL_MILLIS, WARM_REFRESH_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             log.error("Failed to launch Playwright browser: {}", e.getMessage(), e);
             playwright = null;
@@ -68,6 +95,19 @@ public class BuffQrLoginService {
 
     @PreDestroy
     public void shutdown() {
+        shuttingDown = true;
+        if (warmExecutor != null) {
+            warmExecutor.shutdownNow();
+            try {
+                warmExecutor.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        QrLoginSession warm = warmSession.getAndSet(null);
+        if (warm != null) {
+            safeCloseContext(warm);
+        }
         cleanupAllSessions();
         if (browser != null) {
             try {
@@ -106,87 +146,194 @@ public class BuffQrLoginService {
         cleanupAccountSession(accountId);
         cleanupExpiredSessions();
 
-        String sessionId = UUID.randomUUID().toString();
-        String qrcodeBase64;
-        String status = "PENDING";
+        try {
+            // Fast path: hand out a pre-rendered QR if one is fresh, then refill in the background.
+            QrLoginSession session = takeWarmSession();
+            if (session != null) {
+                long now = Instant.now().toEpochMilli();
+                session.accountId = accountId;
+                session.createdAt = now;
+                session.expiresAt = now + SESSION_TIMEOUT_MILLIS;
+                log.info("QR login session={} served from warm pool, accountId={}", session.sessionId, accountId);
+            } else {
+                // Slow path: nothing warm available, build synchronously. captureQrCode already
+                // falls back to a QR-box-only screenshot, so we never show a full-page capture.
+                session = buildSession(accountId, UUID.randomUUID().toString());
+            }
 
+            sessions.put(session.sessionId, session);
+            log.info("QR login session={} created, status={}, accountId={}, expiresAt={}",
+                session.sessionId, session.status, session.accountId, Long.valueOf(session.expiresAt));
+
+            // Top the warm pool back up for the next request.
+            scheduleWarm();
+
+            return new QrLoginStartResponse(
+                session.sessionId,
+                session.qrcodeBase64,
+                session.status,
+                "SUCCESS".equals(session.status) ? "已检测到登录状态，正在保存会话。" : "请使用网易 BUFF App 扫描二维码登录。",
+                session.expiresAt,
+                session.accountId
+            );
+        } catch (Exception e) {
+            log.error("Failed to start QR login: {}", e.getMessage(), e);
+            scheduleWarm();
+            // Surface a clean, actionable message (handled -> 400) instead of a raw 500 stack.
+            throw new IllegalArgumentException("BUFF 登录页暂时无法访问（可能被风控限流），请稍候重试，或改用「手动导入」。");
+        }
+    }
+
+    // Navigates to the BUFF login page under the Playwright lock, retrying once on transient
+    // connection failures (BUFF intermittently resets the connection under load).
+    private void navigateWithRetry(Page page, String sessionId) {
+        try {
+            page.navigate(BUFF_LOGIN_URL, new Page.NavigateOptions()
+                .setWaitUntil(WaitUntilState.COMMIT)
+                .setTimeout(15000));
+        } catch (RuntimeException first) {
+            log.warn("QR login session={} first navigation failed ({}), retrying once...",
+                sessionId, first.getMessage());
+            try {
+                Thread.sleep(800);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+            page.navigate(BUFF_LOGIN_URL, new Page.NavigateOptions()
+                .setWaitUntil(WaitUntilState.COMMIT)
+                .setTimeout(15000));
+        }
+    }
+
+    // Atomically takes the warm session if it is still fresh, usable, and on the login page.
+    private QrLoginSession takeWarmSession() {
+        QrLoginSession warm = warmSession.getAndSet(null);
+        if (warm == null) {
+            return null;
+        }
+        long now = Instant.now().toEpochMilli();
+        boolean tooOld = (now - warm.createdAt) > WARM_MAX_AGE_MILLIS;
+        boolean unusable = warm.qrcodeBase64 == null || isPageClosedLocked(warm.page);
+        if (tooOld || unusable) {
+            safeCloseContext(warm);
+            return null;
+        }
+        return warm;
+    }
+
+    /**
+     * Builds a fresh login session with the QR already captured. Shared by the synchronous slow
+     * path and the warm-pool pre-render. All Playwright calls run under {@link #pwLock}.
+     */
+    private QrLoginSession buildSession(Long accountId, String sessionId) {
         BrowserContext context = null;
-        Page page = null;
+        Page page;
+        String status = "PENDING";
+        Long resolvedAccountId = accountId;
+        String cookieStrForSuccess = null;
 
+        pwLock.lock();
         try {
             context = browser.newContext(new Browser.NewContextOptions()
                 .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .setLocale("zh-CN"));
             page = context.newPage();
 
-            // Open BUFF's own login page. Its default panel is the "扫码登录" (scan with the
-            // NetEase BUFF App) flow; the QR lives in #qr_code_box as a data:image base64 src.
             // Return as soon as the document response commits (COMMIT) instead of waiting for
-            // DOMContentLoaded/NETWORKIDLE — BUFF's heavy blocking scripts make those wait up to
-            // ~15s. captureQrCode() then waits for the QR element directly, so we pay only for
-            // the time the QR actually needs to render.
-            log.info("Starting QR login session={}, navigating to BUFF login page...", sessionId);
-            page.navigate(BUFF_LOGIN_URL, new Page.NavigateOptions()
-                .setWaitUntil(WaitUntilState.COMMIT)
-                .setTimeout(15000));
+            // DOMContentLoaded/NETWORKIDLE — BUFF's heavy blocking scripts make those wait ~15s.
+            // BUFF occasionally drops the connection (ERR_CONNECTION_CLOSED, e.g. transient
+            // throttling); retry once before giving up so a blip doesn't surface as an error.
+            log.info("Building QR login session={}, navigating to BUFF login page...", sessionId);
+            navigateWithRetry(page, sessionId);
 
             String currentUrl = page.url().toLowerCase();
-            log.info("QR login session={}, current URL after navigation: {}", sessionId, currentUrl);
-
-            // If we somehow land already logged in (existing cookies), BUFF redirects away
-            // from the login page. Treat that as success.
-            Long resolvedAccountId = accountId;
+            // If we somehow land already logged in (existing cookies), BUFF redirects away from the
+            // login page. Detect it under the lock; persist cookies after releasing the lock.
             if (!currentUrl.contains("/account/login")) {
                 List<Cookie> cookies = context.cookies();
-                String cookieStr = buildCookieString(cookies);
                 if (hasLoginCookie(cookies)) {
-                    resolvedAccountId = Long.valueOf(resolveOrCreateAccountId(accountId));
-                    importCookies(cookieStr, resolvedAccountId);
+                    cookieStrForSuccess = buildCookieString(cookies);
                     status = "SUCCESS";
                 }
             }
-
-            // Capture BUFF's QR code data URL (no screenshot needed).
-            qrcodeBase64 = null;
-            if (!"SUCCESS".equals(status)) {
-                qrcodeBase64 = captureQrCode(page, sessionId);
-                if (qrcodeBase64 == null) {
-                    // Fallback: screenshot just the QR area, then the whole login panel.
-                    log.warn("QR login session={}, QR data URL not found, falling back to screenshot", sessionId);
-                    qrcodeBase64 = capturePageScreenshot(page);
-                }
-            }
-
-            long expiresAt = Instant.now().toEpochMilli() + SESSION_TIMEOUT_MILLIS;
-
-            QrLoginSession session = new QrLoginSession();
-            session.sessionId = sessionId;
-            session.browserContext = context;
-            session.page = page;
-            session.accountId = resolvedAccountId;
-            session.status = status;
-            session.createdAt = Instant.now().toEpochMilli();
-            session.expiresAt = expiresAt;
-
-            sessions.put(sessionId, session);
-
-            log.info("QR login session={} created, status={}, accountId={}, expiresAt={}", sessionId, status, resolvedAccountId, expiresAt);
-
-            return new QrLoginStartResponse(
-                sessionId,
-                qrcodeBase64,
-                status,
-                status.equals("SUCCESS") ? "已检测到登录状态，正在保存会话。" : "请使用网易 BUFF App 扫描二维码登录。",
-                expiresAt,
-                resolvedAccountId
-            );
-
         } catch (Exception e) {
-            log.error("Failed to start QR login session={}: {}", sessionId, e.getMessage(), e);
             if (context != null) {
                 try { context.close(); } catch (Exception ex) { /* ignore */ }
             }
+            pwLock.unlock();
             throw new IllegalStateException("启动扫码登录失败: " + e.getMessage(), e);
+        }
+        pwLock.unlock();
+
+        // captureQrCode locks per poll internally so it doesn't block status polls while it waits.
+        String qrcodeBase64 = null;
+        if (!"SUCCESS".equals(status)) {
+            qrcodeBase64 = captureQrCode(page, sessionId);
+        }
+
+        long now = Instant.now().toEpochMilli();
+        QrLoginSession session = new QrLoginSession();
+        session.sessionId = sessionId;
+        session.browserContext = context;
+        session.page = page;
+        session.accountId = resolvedAccountId;
+        session.status = status;
+        session.qrcodeBase64 = qrcodeBase64;
+        session.createdAt = now;
+        session.expiresAt = now + SESSION_TIMEOUT_MILLIS;
+
+        // DB writes for the rare "already logged in" case happen outside the Playwright lock.
+        if ("SUCCESS".equals(status) && cookieStrForSuccess != null) {
+            try {
+                session.accountId = Long.valueOf(resolveOrCreateAccountId(accountId));
+                importCookies(cookieStrForSuccess, session.accountId);
+            } catch (Exception e) {
+                log.warn("QR login session={} pre-authenticated cookie import failed: {}", sessionId, e.getMessage());
+            }
+        }
+        return session;
+    }
+
+    // Submits a warm refresh to the single warm thread (no-op if one is already fresh).
+    private void scheduleWarm() {
+        if (shuttingDown || warmExecutor == null || !isAvailable()) {
+            return;
+        }
+        try {
+            warmExecutor.execute(this::ensureWarmFresh);
+        } catch (Exception e) {
+            // Executor shutting down; ignore.
+        }
+    }
+
+    // Runs only on the single warm thread: rebuilds the warm session when missing or stale.
+    private void ensureWarmFresh() {
+        if (shuttingDown || !isAvailable()) {
+            return;
+        }
+        try {
+            QrLoginSession cur = warmSession.get();
+            long now = Instant.now().toEpochMilli();
+            boolean fresh = cur != null
+                && cur.qrcodeBase64 != null
+                && (now - cur.createdAt) < WARM_MAX_AGE_MILLIS
+                && !isPageClosedLocked(cur.page);
+            if (fresh) {
+                return;
+            }
+            QrLoginSession old = warmSession.getAndSet(null);
+            if (old != null) {
+                safeCloseContext(old);
+            }
+            QrLoginSession built = buildSession(null, UUID.randomUUID().toString());
+            if (shuttingDown || built.qrcodeBase64 == null) {
+                safeCloseContext(built);
+                return;
+            }
+            warmSession.set(built);
+            log.info("Warm QR session={} ready", built.sessionId);
+        } catch (Exception e) {
+            log.warn("Failed to refresh warm QR session: {}", e.getMessage());
         }
     }
 
@@ -207,54 +354,62 @@ public class BuffQrLoginService {
             return new QrLoginStatusResponse(sessionId, "SUCCESS", "登录成功。", true, true, session.accountId);
         }
 
+        // Read all page state in a single locked block; do DB work afterwards outside the lock.
+        boolean onLoginPage;
+        List<Cookie> cookies = null;
+        boolean qrInvalid = false;
+        boolean scanFinished = false;
+        pwLock.lock();
         try {
             Page page = session.page;
             if (page == null || page.isClosed()) {
+                pwLock.unlock();
                 cleanupSession(sessionId);
                 return new QrLoginStatusResponse(sessionId, "FAILED", "浏览器页面已关闭。", false, false);
             }
-
             String currentUrl = page.url().toLowerCase();
-            log.debug("QR login session={}, polling URL: {}", sessionId, currentUrl);
-
-            // Login complete: BUFF redirects away from /account/login once the scan is
-            // confirmed in the app. Extract the authenticated cookies and persist them.
-            if (!currentUrl.contains("/account/login")) {
-                log.info("QR login session={} left login page, extracting cookies...", sessionId);
-                List<Cookie> cookies = session.browserContext.cookies();
-                if (!hasLoginCookie(cookies)) {
-                    // Redirected but no session cookie yet; keep waiting one more poll.
-                    return new QrLoginStatusResponse(sessionId, session.status, "登录跳转中，请稍候...", false, false);
-                }
-                // For a pending session (no account yet) this creates the account on success.
-                long targetAccountId = resolveOrCreateAccountId(session.accountId);
-                session.accountId = Long.valueOf(targetAccountId);
-                importCookies(buildCookieString(cookies), session.accountId);
-                session.status = "SUCCESS";
-                log.info("QR login session={} succeeded, cookies saved to account={}", sessionId, targetAccountId);
-                safeCloseContext(session);
-                return new QrLoginStatusResponse(sessionId, "SUCCESS", "登录成功，会话已保存。", true, true, Long.valueOf(targetAccountId));
+            onLoginPage = currentUrl.contains("/account/login");
+            if (!onLoginPage) {
+                cookies = session.browserContext.cookies();
+            } else {
+                qrInvalid = isElementVisibleLocked(page, "#qrcode_invalid");
+                scanFinished = isElementVisibleLocked(page, "#qrcode_scan_finish");
             }
-
-            // Still on the login page: read BUFF's own QR status indicators.
-            if (isElementVisible(page, "#qrcode_invalid")) {
-                session.status = "EXPIRED";
-                return new QrLoginStatusResponse(sessionId, "EXPIRED", "二维码已过期，请重新获取。", false, false);
-            }
-            if (isElementVisible(page, "#qrcode_scan_finish")) {
-                if (!"CONFIRMED".equals(session.status)) {
-                    session.status = "CONFIRMED";
-                    log.info("QR login session={} status updated to CONFIRMED (scan finished)", sessionId);
-                }
-                return new QrLoginStatusResponse(sessionId, "CONFIRMED", "已扫码，请在网易 BUFF App 中确认登录。", false, false);
-            }
-
-            return new QrLoginStatusResponse(sessionId, session.status, "等待扫码中，请使用网易 BUFF App 扫描二维码。", false, false);
-
         } catch (Exception e) {
+            pwLock.unlock();
             log.error("Error polling QR login session={}: {}", sessionId, e.getMessage(), e);
             return new QrLoginStatusResponse(sessionId, "PENDING", "轮询中...", false, false);
         }
+        pwLock.unlock();
+
+        // Login complete: BUFF redirects away from /account/login once the scan is confirmed.
+        if (!onLoginPage) {
+            if (cookies == null || !hasLoginCookie(cookies)) {
+                // Redirected but no session cookie yet; keep waiting one more poll.
+                return new QrLoginStatusResponse(sessionId, session.status, "登录跳转中，请稍候...", false, false);
+            }
+            log.info("QR login session={} left login page, extracting cookies...", sessionId);
+            long targetAccountId = resolveOrCreateAccountId(session.accountId);
+            session.accountId = Long.valueOf(targetAccountId);
+            importCookies(buildCookieString(cookies), session.accountId);
+            session.status = "SUCCESS";
+            log.info("QR login session={} succeeded, cookies saved to account={}", sessionId, Long.valueOf(targetAccountId));
+            safeCloseContext(session);
+            return new QrLoginStatusResponse(sessionId, "SUCCESS", "登录成功，会话已保存。", true, true, Long.valueOf(targetAccountId));
+        }
+
+        if (qrInvalid) {
+            session.status = "EXPIRED";
+            return new QrLoginStatusResponse(sessionId, "EXPIRED", "二维码已过期，请重新获取。", false, false);
+        }
+        if (scanFinished) {
+            if (!"CONFIRMED".equals(session.status)) {
+                session.status = "CONFIRMED";
+                log.info("QR login session={} status updated to CONFIRMED (scan finished)", sessionId);
+            }
+            return new QrLoginStatusResponse(sessionId, "CONFIRMED", "已扫码，请在网易 BUFF App 中确认登录。", false, false);
+        }
+        return new QrLoginStatusResponse(sessionId, session.status, "等待扫码中，请使用网易 BUFF App 扫描二维码。", false, false);
     }
 
     public void cancelLogin(String sessionId) {
@@ -270,40 +425,15 @@ public class BuffQrLoginService {
         ".login-qrcode img",
     };
 
-    // Returns the base64 payload (without the data URL prefix) of BUFF's login QR code.
-    // Waits event-driven for the QR <img> to appear (its src is set once the page JS fetches
-    // the QR token), so it returns the instant the code renders rather than on a fixed tick.
+    // Returns the base64 payload (without the data URL prefix) of BUFF's login QR code. Polls under
+    // the Playwright lock per attempt and sleeps outside it, so status polls can interleave.
     private String captureQrCode(Page page, String sessionId) {
         long deadline = Instant.now().toEpochMilli() + QR_RENDER_TIMEOUT_MILLIS;
-
-        // Block until BUFF's primary QR <img> with a data:image src is present, then read it.
-        try {
-            long remaining = deadline - Instant.now().toEpochMilli();
-            if (remaining > 0) {
-                page.waitForSelector("#qr_code_box img[src^='data:image']",
-                    new Page.WaitForSelectorOptions().setTimeout(remaining));
-            }
-        } catch (Exception e) {
-            log.debug("QR primary selector wait timed out: {}", e.getMessage());
-        }
-
         while (Instant.now().toEpochMilli() < deadline) {
-            for (String selector : QR_SELECTORS) {
-                try {
-                    ElementHandle qrElement = page.querySelector(selector);
-                    if (qrElement != null && qrElement.isVisible()) {
-                        String src = qrElement.getAttribute("src");
-                        if (src != null && src.startsWith("data:image")) {
-                            int comma = src.indexOf(',');
-                            if (comma > 0 && comma < src.length() - 1) {
-                                log.info("QR login session={}, QR data URL captured via selector: {}", sessionId, selector);
-                                return src.substring(comma + 1);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.debug("QR selector {} failed: {}", selector, e.getMessage());
-                }
+            String qr = tryReadQrCode(page);
+            if (qr != null) {
+                log.info("QR login session={}, QR data URL captured", sessionId);
+                return qr;
             }
             try {
                 Thread.sleep(QR_POLL_INTERVAL_MILLIS);
@@ -312,17 +442,66 @@ public class BuffQrLoginService {
                 break;
             }
         }
-
-        log.info("QR login session={}, QR data URL not found after waiting", sessionId);
+        // The crisp data:image never showed up in time. Rather than capturing the whole page,
+        // screenshot just the QR box so the user still sees only the QR (slightly larger image).
+        String boxShot = captureQrBoxScreenshotLocked(page);
+        if (boxShot != null) {
+            log.info("QR login session={}, QR captured via box element screenshot (data URL timed out)", sessionId);
+            return boxShot;
+        }
+        log.info("QR login session={}, QR not found after waiting", sessionId);
         return null;
     }
 
-    private boolean isElementVisible(Page page, String selector) {
+    // One locked attempt to read the QR data URL from any known selector; null if not ready.
+    private String tryReadQrCode(Page page) {
+        pwLock.lock();
+        try {
+            for (String selector : QR_SELECTORS) {
+                try {
+                    ElementHandle qrElement = page.querySelector(selector);
+                    if (qrElement != null && qrElement.isVisible()) {
+                        String src = qrElement.getAttribute("src");
+                        if (src != null && src.startsWith("data:image")) {
+                            int comma = src.indexOf(',');
+                            if (comma > 0 && comma < src.length() - 1) {
+                                return src.substring(comma + 1);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("QR selector {} failed: {}", selector, e.getMessage());
+                }
+            }
+            return null;
+        } finally {
+            pwLock.unlock();
+        }
+    }
+
+    private boolean isElementVisibleLocked(Page page, String selector) {
+        pwLock.lock();
         try {
             ElementHandle el = page.querySelector(selector);
             return el != null && el.isVisible();
         } catch (Exception e) {
             return false;
+        } finally {
+            pwLock.unlock();
+        }
+    }
+
+    private boolean isPageClosedLocked(Page page) {
+        if (page == null) {
+            return true;
+        }
+        pwLock.lock();
+        try {
+            return page.isClosed();
+        } catch (Exception e) {
+            return true;
+        } finally {
+            pwLock.unlock();
         }
     }
 
@@ -360,15 +539,30 @@ public class BuffQrLoginService {
         return newId;
     }
 
-    private String capturePageScreenshot(Page page) {
+    // QR-box candidates for the element-screenshot fallback — the white login card holding the QR.
+    private static final String[] QR_BOX_SELECTORS = {
+        "#qr_code_box",
+        "#login_qr_code_content",
+        ".login-qrcode",
+    };
+
+    // Screenshots only the QR card element (not the full page), returned as base64 PNG.
+    private String captureQrBoxScreenshotLocked(Page page) {
+        pwLock.lock();
         try {
-            byte[] screenshot = page.screenshot(new Page.ScreenshotOptions()
-                .setType(ScreenshotType.PNG)
-                .setFullPage(false));
-            return Base64.getEncoder().encodeToString(screenshot);
-        } catch (Exception e) {
-            log.warn("Failed to capture page screenshot: {}", e.getMessage());
+            for (String selector : QR_BOX_SELECTORS) {
+                ElementHandle box = page.querySelector(selector);
+                if (box != null && box.isVisible()) {
+                    byte[] png = box.screenshot(new ElementHandle.ScreenshotOptions().setType(ScreenshotType.PNG));
+                    return Base64.getEncoder().encodeToString(png);
+                }
+            }
             return null;
+        } catch (Exception e) {
+            log.warn("Failed to capture QR box screenshot: {}", e.getMessage());
+            return null;
+        } finally {
+            pwLock.unlock();
         }
     }
 
@@ -428,19 +622,25 @@ public class BuffQrLoginService {
     }
 
     private void safeCloseContext(QrLoginSession session) {
+        pwLock.lock();
         try {
             if (session.page != null && !session.page.isClosed()) {
                 session.page.close();
             }
         } catch (Exception e) {
             log.debug("Error closing page: {}", e.getMessage());
+        } finally {
+            pwLock.unlock();
         }
+        pwLock.lock();
         try {
             if (session.browserContext != null) {
                 session.browserContext.close();
             }
         } catch (Exception e) {
             log.debug("Error closing browser context: {}", e.getMessage());
+        } finally {
+            pwLock.unlock();
         }
     }
 
@@ -450,8 +650,8 @@ public class BuffQrLoginService {
         Page page;
         Long accountId;
         String status;
+        String qrcodeBase64;
         long createdAt;
         long expiresAt;
-        String lastPollUrl;
     }
 }
