@@ -9,7 +9,7 @@ const parseErrorText = (text, status) => {
       return payload.message
     }
   } catch (error) {
-    // Keep the original response text when it is not JSON.
+    // 非 JSON 响应保留原始文本。
   }
   return normalized
 }
@@ -23,7 +23,7 @@ export const request = async (url, options = {}) => {
   if (response.status === 204) {
     return null
   }
-  // Some endpoints (e.g. DELETE) return 200 with an empty body; avoid JSON parse errors.
+  // 某些接口（如 DELETE）会返回 200 且 body 为空，避免 JSON 解析报错。
   const text = await response.text()
   if (!text) {
     return null

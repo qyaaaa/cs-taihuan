@@ -32,8 +32,7 @@ public class AccountCatalogController {
         return catalogApplicationService.syncCatalog(accountId, request);
     }
 
-    // Backfills outcome-tier skins (from the inventory's collections) that the user doesn't own,
-    // so trade-up outcome pools are complete and expected values aren't inflated by missing skins.
+    // 补齐用户未拥有但属于库存收藏品上级产物池的皮肤，避免产物池缺失导致 EV 被高估。
     @PostMapping("/backfill-outcomes")
     public Map<String, Object> backfillOutcomes(@PathVariable long accountId,
             @RequestParam(value = "maxSkinSearches", required = false) Integer maxSkinSearches,

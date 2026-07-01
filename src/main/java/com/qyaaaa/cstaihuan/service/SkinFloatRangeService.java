@@ -24,8 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /**
- * Manages the bundled full-catalog skin wear-range library: loads the snapshot into
- * skin_float_range and serves lookups for the float calculator (range fallback + search).
+ * 管理内置全量皮肤磨损范围基准库：把快照导入 skin_float_range，
+ * 并为磨损计算器提供范围回退和搜索能力。
  */
 @Service
 public class SkinFloatRangeService {
@@ -70,7 +70,7 @@ public class SkinFloatRangeService {
                 if (imported > 0) {
                     log.info("Added missing skin_float_range rows from snapshot, count={}", imported);
                 }
-                // Existing rows predate the image_url column; backfill their icons from the snapshot.
+                // 旧行可能早于 image_url 字段存在，从快照回填图标。
                 backfillMissingImages();
             }
         } catch (Exception e) {
@@ -83,7 +83,7 @@ public class SkinFloatRangeService {
         return count == null ? 0 : count.intValue();
     }
 
-    /** Loads the bundled JSON snapshot and replaces the table contents. Returns row count. */
+    /** 读取内置 JSON 快照并替换整张表，返回导入行数。 */
     @Transactional
     public int importFromSnapshot() {
         final List<SkinFloatRange> rows = readPreparedSnapshot();
@@ -94,8 +94,8 @@ public class SkinFloatRangeService {
     }
 
     /**
-     * Adds only rows whose snapshot skin_id is not present locally. This keeps existing
-     * manually imported/older rows intact while letting new collections become visible.
+     * 只追加本地尚不存在的快照 skin_id。这样既保留手动导入或旧数据，
+     * 又能让新增收藏品自动可见。
      */
     @Transactional
     public int importMissingFromSnapshot() {
@@ -114,8 +114,8 @@ public class SkinFloatRangeService {
     }
 
     /**
-     * Fills image_url for rows that don't have one yet, matching the snapshot by skin_id. Used to
-     * retro-fit icons onto rows imported before the image_url column existed. No-op once all set.
+     * 按 skin_id 匹配快照，为尚无 image_url 的行补图标。用于给 image_url 字段出现前导入的旧行补齐图标；
+     * 全部补齐后再次调用不会产生变化。
      */
     @Transactional
     public int backfillMissingImages() {
@@ -157,8 +157,7 @@ public class SkinFloatRangeService {
         for (SkinFloatRange row : rows) {
             row.setBaseNameEn(WearSuffix.toMatchKey(row.getNameEn()));
             row.setBaseNameZh(WearSuffix.toMatchKey(row.getNameZh()));
-            // Normalize the source rarity into the trade-up scheme so it matches catalog_skin
-            // and rarity filtering works (knives/gloves -> gold by weapon).
+            // 将来源稀有度归一到汰换档位体系，确保与 catalog_skin 一致，档位筛选也能正确工作（刀/手套按武器归为 gold）。
             row.setRarity(SkinRarity.normalize(row.getRarity(), row.getWeapon()));
         }
         return rows;
@@ -213,7 +212,7 @@ public class SkinFloatRangeService {
         }
     }
 
-    /** Looks up a wear range by a skin name (any wear/StatTrak variant), matching EN then ZH. */
+    /** 按皮肤名查找磨损范围（支持任意磨损/StatTrak 变体），先匹配英文再匹配中文。 */
     public Optional<SkinFloatRange> findByName(String name) {
         String key = WearSuffix.toMatchKey(name);
         if (key.isEmpty()) {
@@ -226,7 +225,7 @@ public class SkinFloatRangeService {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
-    /** Field-scoped search by collection / name keyword / rarity. */
+    /** 按收藏品、名称关键词、档位分别过滤搜索。 */
     public List<SkinFloatRange> search(String collection, String name, String rarity, int limit) {
         int normalizedLimit = Math.max(1, Math.min(limit, 100));
         StringBuilder sql = new StringBuilder("SELECT * FROM skin_float_range WHERE 1=1");
@@ -253,9 +252,8 @@ public class SkinFloatRangeService {
     }
 
     /**
-     * Maps each skin (normalized zh base name) to its authoritative paint-kit float range [min,max].
-     * Trade-up float math needs the skin's full paint range — NOT a wear-tier sub-range — for both
-     * normalizing inputs and scaling the output.
+     * 将每个皮肤（规范化中文基础名）映射到权威 paint kit 磨损范围 [min,max]。
+     * 汰换磨损计算需要皮肤完整 paint 范围，而不是某个外观档子范围，用于归一化输入和缩放产出。
      */
     public Map<String, double[]> nameToRange() {
         Map<String, double[]> map = new java.util.HashMap<String, double[]>();
@@ -273,7 +271,7 @@ public class SkinFloatRangeService {
         return map;
     }
 
-    /** Base skin names (no wear suffix) of a collection at a given rarity — the authoritative roster. */
+    /** 返回指定收藏品和档位下的基础皮肤名（不含磨损后缀），作为权威名单。 */
     public List<String> collectionSkinNames(String collectionZh, String rarity) {
         if (!StringUtils.hasText(collectionZh) || !StringUtils.hasText(rarity)) {
             return new ArrayList<String>();
@@ -286,7 +284,7 @@ public class SkinFloatRangeService {
         );
     }
 
-    /** Distinct collection names (zh + en) for the frontend dropdown. */
+    /** 返回去重收藏品中英文名，供前端下拉框使用。 */
     public List<String[]> listCollections() {
         return jdbcTemplate.query(
             "SELECT DISTINCT collection_zh, collection_en FROM skin_float_range "
@@ -296,7 +294,7 @@ public class SkinFloatRangeService {
         );
     }
 
-    /** Groups all collection-backed skins with their authoritative float ranges for the collection browser. */
+    /** 按收藏品分组返回所有皮肤及其权威磨损范围，供收藏品图鉴使用。 */
     public List<Map<String, Object>> listCollectionBrowser() {
         List<SkinFloatRange> rows = jdbcTemplate.query(
             "SELECT * FROM skin_float_range "

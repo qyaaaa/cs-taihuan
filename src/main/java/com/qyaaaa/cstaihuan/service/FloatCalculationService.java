@@ -30,7 +30,7 @@ public class FloatCalculationService {
         this.skinFloatRangeService = skinFloatRangeService;
     }
 
-    /** Field-scoped target search merging BUFF catalog (preferred) with the float-range library. */
+    /** 按字段搜索目标饰品，优先合并 BUFF 目录结果，再补充磨损范围基准库结果。 */
     public List<FloatTargetOption> searchTargets(String collection, String name, String rarity, int limit) {
         Map<String, FloatTargetOption> byKey = new LinkedHashMap<String, FloatTargetOption>();
         for (CatalogSkin skin : catalogService.searchTargets(collection, name, rarity, limit)) {
@@ -55,7 +55,7 @@ public class FloatCalculationService {
         return all.size() > normalizedLimit ? new ArrayList<FloatTargetOption>(all.subList(0, normalizedLimit)) : all;
     }
 
-    /** Distinct collections (zh/en) for the search dropdown. */
+    /** 返回去重后的收藏品中英文名，供前端搜索下拉框使用。 */
     public List<Map<String, String>> listCollections() {
         List<Map<String, String>> result = new ArrayList<Map<String, String>>();
         for (String[] row : skinFloatRangeService.listCollections()) {
@@ -208,7 +208,7 @@ public class FloatCalculationService {
         option.setGoodsId(null);
         option.setName(StringUtils.hasText(row.getNameZh()) ? row.getNameZh() : row.getNameEn());
         option.setCollection(StringUtils.hasText(row.getCollectionZh()) ? row.getCollectionZh() : row.getCollectionEn());
-        // Rarity is already normalized to the trade-up scheme at import time.
+        // 稀有度在导入时已归一到汰换档位体系。
         option.setRarity(SkinRarity.normalize(row.getRarity(), row.getWeapon()));
         option.setQualityLabel(null);
         option.setMinFloat(row.getMinFloat());
@@ -218,9 +218,8 @@ public class FloatCalculationService {
         return option;
     }
 
-    // Resolves the target's wear range, preferring the BUFF catalog (with goods_id/price) and
-    // falling back to the float-range library — both to correct a 0~1 fallback and to support
-    // targets that only exist in the library.
+    // 解析目标饰品磨损范围：优先使用带 goods_id/价格的 BUFF 目录，
+    // 再回退到磨损范围基准库，用来修正 0~1 默认范围并支持只存在于基准库的目标。
     private ResolvedTarget resolveTarget(FloatCalculationRequest request) {
         String goodsId = request.getTargetGoodsId();
         if (StringUtils.hasText(goodsId)) {

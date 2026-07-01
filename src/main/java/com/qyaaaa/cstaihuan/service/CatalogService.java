@@ -48,7 +48,7 @@ public class CatalogService {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
-    // Field-scoped search: collection / name / rarity filtered independently (AND).
+    // 按字段搜索：collection / name / rarity 各自独立过滤，条件之间为 AND。
     public List<CatalogSkin> searchTargets(String collection, String name, String rarity, int limit) {
         int normalizedLimit = Math.max(1, Math.min(limit, 100));
         StringBuilder sql = new StringBuilder(
@@ -235,8 +235,10 @@ public class CatalogService {
         return count == null ? 0 : count.intValue();
     }
 
-    /** Maps each catalog skin name to its (real) collection — used to resolve the true collection
-     *  of inventory items whose raw collection is a channel name (e.g. armory「武库通行证」). */
+    /**
+     * 将每个目录皮肤名映射到真实收藏品名，用于修正库存里原始收藏品是发放渠道名的情况
+     * （例如 armory「武库通行证」）。
+     */
     public Map<String, String> nameToCollection() {
         Map<String, String> map = new java.util.HashMap<String, String>();
         jdbcTemplate.query(
@@ -246,7 +248,7 @@ public class CatalogService {
         return map;
     }
 
-    /** Skin names (with wear suffix) currently in catalog for a collection + rarity. */
+    /** 返回当前目录中指定收藏品和档位下的皮肤名（含磨损后缀）。 */
     public List<String> collectionSkinNames(String collection, String rarity) {
         if (collection == null || collection.trim().isEmpty() || rarity == null || rarity.trim().isEmpty()) {
             return new java.util.ArrayList<String>();

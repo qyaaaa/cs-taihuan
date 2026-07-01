@@ -75,13 +75,12 @@ public class BuffAccountService {
         if (listAccounts().size() <= 1) {
             throw new IllegalArgumentException(ErrorMessages.BUFF_ACCOUNT_KEEP_ONE);
         }
-        // These tables carry account_id but have no FK cascade; clean their rows explicitly
-        // (children first) so deleting an account leaves no orphan data behind.
+        // 这些表带 account_id 但没有外键级联；删除账号前显式清理子表，避免遗留孤儿数据。
         Long id = Long.valueOf(accountId);
         jdbcTemplate.update("DELETE FROM catalog_sync_task WHERE account_id = ?", id);
         jdbcTemplate.update("DELETE FROM trade_up_next_tier_item WHERE account_id = ?", id);
         jdbcTemplate.update("DELETE FROM inventory_snapshot WHERE account_id = ?", id);
-        // buff_session is removed automatically via ON DELETE CASCADE.
+        // buff_session 会通过 ON DELETE CASCADE 自动删除。
         jdbcTemplate.update("DELETE FROM buff_account WHERE id = ?", id);
     }
 

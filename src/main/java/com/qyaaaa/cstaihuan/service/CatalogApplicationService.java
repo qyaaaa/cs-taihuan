@@ -68,11 +68,10 @@ public class CatalogApplicationService {
     }
 
     /**
-     * Backfills outcome-tier skins the user doesn't own so trade-up outcome pools are complete.
-     * For every (collection, next-rarity) pair reachable from the inventory, the authoritative
-     * roster comes from the bundled skin_float_range data; any skin missing from catalog is
-     * resolved to a BUFF goods via search and fetched (with all wear variants). Throttled and
-     * bounded by maxSkinSearches to keep BUFF load low.
+     * 补齐用户未拥有的上级产物皮肤，确保汰换产物池完整。对库存可达的每个
+     * （收藏品、下一档位）组合，使用内置 skin_float_range 作为权威名单；
+     * catalog 缺失的皮肤通过 BUFF 搜索解析 goods 并抓取全部磨损变体。
+     * 该流程受 maxSkinSearches 限制并按请求间隔节流，避免给 BUFF 造成过高负载。
      */
     public Map<String, Object> backfillOutcomeCatalog(long accountId, Integer maxSkinSearches, String collectionFilter) throws Exception {
         String wanted = collectionFilter == null ? null : collectionFilter.trim();
@@ -88,11 +87,11 @@ public class CatalogApplicationService {
         long interval = resolveRequestIntervalMillis();
         int budget = maxSkinSearches == null ? 60 : Math.max(1, maxSkinSearches.intValue());
 
-        // Resolve each item's REAL collection by name (raw inventory collection is a channel name
-        // for armory skins, e.g. 武库通行证; the catalog holds the mapped real collection).
+        // 按名称解析每件库存的真实收藏品：武库通行证皮肤的库存原始收藏品是渠道名，
+        // catalog 中保存的才是映射后的真实收藏品。
         Map<String, String> nameToCollection = catalogService.nameToCollection();
 
-        // Needed (collection, output-rarity) pairs = each inventory item's collection + the tier it crafts into.
+        // 需要补齐的（收藏品、产出档位）组合 = 每件库存所属收藏品 + 它能合成到的下一档。
         Map<String, String[]> pairs = new LinkedHashMap<String, String[]>();
         for (BuffItem item : inventory) {
             String rawCollection = nameToCollection.get(item.getName());
@@ -100,8 +99,8 @@ public class CatalogApplicationService {
                 rawCollection = item.getCollection();
             }
             String collection = rawCollection == null ? null : rawCollection.trim();
-            // filter_rarity holds the normalized tier (mil-spec/industrial/...); rarity is the raw
-            // BUFF internal name (rare_weapon/...), which Rarity.next can't read.
+            // filter_rarity 保存归一后的档位（mil-spec/industrial/...）；rarity 是 BUFF 原始内部名，
+            // 下一档位计算无法直接识别 BUFF 原始内部名。
             String inRarity = item.getFilterRarity() == null ? null : item.getFilterRarity().trim();
             if (collection == null || collection.isEmpty() || inRarity == null || inRarity.isEmpty()) {
                 continue;
@@ -185,8 +184,7 @@ public class CatalogApplicationService {
         return summary;
     }
 
-    // Base skins that already have >= 2 wear variants in catalog (considered wear-complete enough).
-    // Skins with 0 or 1 variant are treated as gaps so a re-fetch fills in all their wear tiers.
+    // catalog 中已拥有至少 2 个磨损变体的基础皮肤视为基本完整；0 或 1 个变体视为缺口，会重抓补齐所有档位。
     private java.util.Set<String> completeBaseNames(List<String> variantNames) {
         Map<String, Integer> counts = new java.util.HashMap<String, Integer>();
         for (String name : variantNames) {
@@ -210,7 +208,7 @@ public class CatalogApplicationService {
         return com.qyaaaa.cstaihuan.util.WearSuffix.toRangeMatchKey(name);
     }
 
-    // BUFF search matches better on space-separated tokens than on the " | " separator.
+    // BUFF 搜索使用空格分隔词比直接使用 " | " 分隔符更容易命中。
     private static String searchKeyword(String name) {
         if (name == null) {
             return "";
@@ -278,9 +276,8 @@ public class CatalogApplicationService {
         long cacheFreshMillis = resolveCacheFreshMillis();
         long freshAfterTimestamp = System.currentTimeMillis() - cacheFreshMillis;
         Set<String> freshGoodsIds = catalogService.loadFreshGoodsIds(freshAfterTimestamp);
-        // Also skip goods already attempted (succeeded or skipped) within the freshness window —
-        // including those that yielded no skin and thus aren't in catalog_skin. Without this they
-        // get revived to PENDING and re-fetched every run, eating the budget and starving the backlog.
+        // 同时跳过新鲜窗口内已尝试完成（成功或跳过）的 goods，包括那些解析不出皮肤、因此不会进入 catalog_skin 的商品。
+        // 否则它们会每轮复活为 PENDING 并重复抓取，消耗预算并阻塞真正的待处理队列。
         freshGoodsIds.addAll(catalogSyncTaskStoreService.loadRecentlyCompletedGoodsIds(snapshot.getId(), freshAfterTimestamp));
         Map<String, String> seedGoodsToSyncByGoodsId = new LinkedHashMap<String, String>();
         for (Map.Entry<String, String> entry : seedCollectionsByGoodsId.entrySet()) {
@@ -400,8 +397,7 @@ public class CatalogApplicationService {
                     }
                 }
                 if (parsedByIdentity.isEmpty()) {
-                    // No parseable skin (case / delisted / empty payload). Skip it and remember it
-                    // for this run + the freshness window so it stops being re-fetched every round.
+                    // 没有可解析皮肤（箱子、下架商品或空响应）：跳过并在本轮与新鲜窗口内记住它，避免每轮重复抓取。
                     freshGoodsIds.add(goodsId);
                     catalogSyncTaskStoreService.markSkipped(task.getId(),
                         "详情无可解析皮肤数据，已跳过（冷却 " + (cacheFreshMillis / 3600000L) + "h 后重试）。");

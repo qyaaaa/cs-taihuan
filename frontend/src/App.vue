@@ -22,8 +22,7 @@ const route = useRoute()
 const router = useRouter()
 const activePage = computed(() => (VALID_PAGES.includes(route.name) ? route.name : 'overview'))
 const accountDialogVisible = ref(false)
-// When true, the session dialog was opened via 「新增」 and no account exists yet;
-// the account is created only after a successful scan / manual cookie save.
+// 为 true 表示会话弹窗由“新增”打开，此时本地账号尚未创建；扫码或手动保存成功后才创建账号。
 const pendingNewAccount = ref(false)
 
 const taskMonitor = useTaskMonitor()
@@ -234,7 +233,7 @@ const changePage = (page, options = {}) => {
 }
 
 const openSessionDialog = () => {
-  // Importing a session for the currently selected account (not a new account).
+  // 给当前选中账号导入会话，不创建新账号。
   pendingNewAccount.value = false
   changePage('overview')
   session.sessionDialogVisible.value = true
@@ -266,8 +265,7 @@ const onSessionDialogClosed = () => {
 }
 
 const openNewAccountDialog = () => {
-  // Don't create the account yet — only open the login dialog. The account is created
-  // once a scan succeeds or a cookie is saved.
+  // 此时先不创建账号，只打开登录弹窗；扫码成功或 Cookie 保存成功后再创建。
   pendingNewAccount.value = true
   session.sessionDialogVisible.value = true
 }
@@ -497,7 +495,7 @@ onMounted(async () => {
               后端自动打开 BUFF 登录页，获取登录二维码。使用网易 BUFF App 扫码即可完成登录，会话由后端托管。
             </p>
 
-            <!-- QR code image -->
+            <!-- 二维码图片 -->
             <div v-if="session.qrLogin.qrcode" class="qrcode-display">
               <img
                 :src="'data:image/png;base64,' + session.qrLogin.qrcode"
@@ -510,7 +508,7 @@ onMounted(async () => {
               <span>点击下方按钮获取登录二维码</span>
             </div>
 
-            <!-- Status message -->
+            <!-- 状态消息 -->
             <div v-if="session.qrLogin.status !== 'IDLE'" class="qrcode-status" :class="session.qrLogin.status.toLowerCase()">
               <span v-if="session.qrLogin.status === 'PENDING'">⏳ 等待扫码中...</span>
               <span v-else-if="session.qrLogin.status === 'SCANNED'">📱 已扫码，请在网易 BUFF App 中确认</span>

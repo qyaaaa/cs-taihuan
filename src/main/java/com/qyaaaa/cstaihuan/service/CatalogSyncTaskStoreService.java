@@ -188,10 +188,9 @@ public class CatalogSyncTaskStoreService {
         return count == null ? 0 : count.intValue();
     }
 
-    // Goods that were already fetched and resolved (succeeded or skipped) within the freshness
-    // window. Used to skip re-fetching them this run — notably goods that yield no parseable skin
-    // (cases / delisted / empty payloads) which never land in catalog_skin and would otherwise be
-    // revived to PENDING and re-fetched every run, starving the real backlog.
+    // 返回新鲜窗口内已抓取并处理完成（成功或跳过）的 goods，用于本轮跳过重复抓取。
+    // 尤其是箱子、下架商品、空响应这类解析不出皮肤且不会落 catalog_skin 的 goods，
+    // 否则它们每轮都会复活为 PENDING 并反复抓取，挤占真正待补的队列。
     public java.util.Set<String> loadRecentlyCompletedGoodsIds(long snapshotId, long attemptedAfter) {
         List<String> rows = jdbcTemplate.query(
             "SELECT goods_id FROM catalog_sync_task " +

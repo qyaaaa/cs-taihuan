@@ -6,8 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * One skin's authoritative wear (float) range, sourced from a bundled full-catalog snapshot.
- * Also used to deserialize the snapshot JSON, so JSON field names map directly.
+ * 单个皮肤的权威磨损范围，来源于内置全量目录快照。
+ * 同时用于反序列化快照 JSON，因此字段名需要与 JSON 直接对应。
  */
 @Data
 @NoArgsConstructor
@@ -24,9 +24,9 @@ public class SkinFloatRange {
     private double maxFloat;
     private String collectionEn;
     private String collectionZh;
-    // Skin icon URL, sourced from the snapshot's `image` field (joined in from ByMykel/CSGO-API by id).
+    // 皮肤图标 URL，来源于快照的 image 字段（按 id 从 ByMykel/CSGO-API 合并）。
     private String image;
-    // Normalized base names (computed at import time, not present in the JSON).
+    // 规范化基础名，导入时计算，不存在于原始 JSON。
     private String baseNameEn;
     private String baseNameZh;
 }

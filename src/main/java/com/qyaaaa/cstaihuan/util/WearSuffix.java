@@ -1,8 +1,8 @@
 package com.qyaaaa.cstaihuan.util;
 
 /**
- * Helpers for stripping wear (exterior) suffixes and normalizing skin names so the same
- * skin matches across data sources (BUFF catalog, the bundled float-range snapshot, etc.).
+ * 用于去掉磨损外观后缀并规范化饰品名，确保同一皮肤能跨 BUFF 目录、
+ * 内置磨损范围快照等不同数据源稳定匹配。
  */
 public final class WearSuffix {
     private static final String[] WEAR_SUFFIXES = new String[] {
@@ -18,16 +18,16 @@ public final class WearSuffix {
         " (战痕累累)"
     };
 
-    // Standard CS exterior tiers, indexed 0..4 (Factory New .. Battle-Scarred).
+    // CS 标准磨损外观档位，索引 0..4（崭新出厂到战痕累累）。
     public static final int TIER_FACTORY_NEW = 0;
     public static final int TIER_BATTLE_SCARRED = 4;
-    // Upper bounds (exclusive) for tiers 0..3; tier 4 covers the rest up to 1.0.
+    // 档位 0..3 的开区间上界；档位 4 覆盖剩余范围直到 1.0。
     private static final double[] TIER_UPPER_BOUNDS = new double[] {0.07d, 0.15d, 0.38d, 0.45d};
 
     private WearSuffix() {
     }
 
-    /** Maps an absolute float value to the standard CS exterior tier (0=Factory New .. 4=Battle-Scarred). */
+    /** 将绝对磨损值映射到 CS 标准外观档位（0=崭新出厂，4=战痕累累）。 */
     public static int wearTierForFloat(double floatValue) {
         for (int i = 0; i < TIER_UPPER_BOUNDS.length; i++) {
             if (floatValue < TIER_UPPER_BOUNDS[i]) {
@@ -37,7 +37,7 @@ public final class WearSuffix {
         return TIER_BATTLE_SCARRED;
     }
 
-    /** Returns the exterior tier encoded in a skin name's wear suffix, or -1 if it has none. */
+    /** 从饰品名的磨损后缀解析外观档位；没有后缀时返回 -1。 */
     public static int wearTierOfName(String name) {
         if (name == null) {
             return -1;
@@ -51,26 +51,25 @@ public final class WearSuffix {
         return -1;
     }
 
-    // Chinese exterior suffixes indexed by tier 0..4 (Factory New .. Battle-Scarred).
+    // 中文磨损外观后缀，按档位 0..4（崭新出厂到战痕累累）索引。
     private static final String[] ZH_WEAR_SUFFIXES = new String[] {
         " (崭新出厂)", " (略有磨损)", " (久经沙场)", " (破损不堪)", " (战痕累累)"
     };
 
-    /** The Chinese exterior suffix for an absolute float's standard wear tier (0.3823 -> " (破损不堪)"). */
+    /** 根据绝对磨损所属标准档位返回中文外观后缀（如 0.3823 -> " (破损不堪)"）。 */
     public static String zhWearSuffixForFloat(double floatValue) {
         return ZH_WEAR_SUFFIXES[wearTierForFloat(floatValue)];
     }
 
     /**
-     * Replaces a skin name's wear suffix with the one matching the given float. In CS the exterior
-     * is a fixed function of the absolute float, so this yields the correct tier even when the
-     * catalog only has one wear variant of the skin.
+     * 用给定磨损对应的中文外观后缀替换饰品名后缀。CS 外观档位由绝对磨损唯一决定，
+     * 因此即使目录里只有某皮肤的一个外观档，也能得到正确档位名。
      */
     public static String withZhWearForFloat(String name, double floatValue) {
         return stripWearSuffix(name) + zhWearSuffixForFloat(floatValue);
     }
 
-    /** Standard CS float range [min,max] of the wear tier encoded in the name; full [0,1] if none. */
+    /** 返回饰品名后缀对应的 CS 标准磨损档范围 [min,max]；没有后缀时返回完整 [0,1]。 */
     public static double[] standardWearRange(String name) {
         int tier = wearTierOfName(name);
         if (tier < 0) {
@@ -81,7 +80,7 @@ public final class WearSuffix {
         return new double[] {min, max};
     }
 
-    /** Removes a trailing exterior suffix (e.g. " (Field-Tested)" / " (久经沙场)"). */
+    /** 去掉尾部磨损外观后缀（例如 " (Field-Tested)" / " (久经沙场)"）。 */
     public static String stripWearSuffix(String name) {
         if (name == null) {
             return "";
@@ -95,14 +94,14 @@ public final class WearSuffix {
         return trimmed;
     }
 
-    /** Lower-cases and trims; the canonical form for map keys. */
+    /** 去首尾空白并转小写，作为 Map 键的基础规范形式。 */
     public static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase();
     }
 
     /**
-     * Builds a cross-source match key for a skin: drop the wear suffix, drop StatTrak/★/Souvenir
-     * markers (wear range is identical across those variants), collapse whitespace, lower-case.
+     * 构造跨数据源匹配键：去掉磨损后缀、StatTrak/★/纪念品标记（这些版本磨损范围一致），
+     * 合并空白并转小写。
      */
     public static String toMatchKey(String name) {
         if (name == null) {
@@ -122,10 +121,9 @@ public final class WearSuffix {
     }
 
     /**
-     * Stronger cross-source match key for aligning BUFF/catalog skin names with the ByMykel
-     * (skin_float_range) roster: drops wear + StatTrak/★/Souvenir markers (incl. their parens),
-     * normalizes weapon-name aliases (CZ75自动型→CZ75, M4A1消音型→消音版), removes ALL whitespace,
-     * lower-cases. Used for paint-range lookups where naming differs across sources.
+     * 更强的跨数据源匹配键，用于对齐 BUFF/目录饰品名与 ByMykel 的 skin_float_range 名单：
+     * 去掉磨损、StatTrak/★/纪念品标记及其括号，统一部分武器别名（如 CZ75自动型→CZ75、
+     * M4A1消音型→消音版），移除全部空白并转小写。用于处理数据源命名不一致时的磨损范围查找。
      */
     public static String toRangeMatchKey(String name) {
         if (name == null) {

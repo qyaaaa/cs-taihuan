@@ -1,13 +1,12 @@
 package com.qyaaaa.cstaihuan.util;
 
 /**
- * Normalizes a skin's source rarity (e.g. ByMykel/CSGO-API values like "Covert",
- * "Extraordinary", "Mil-Spec Grade") into the trade-up rarity scheme used across the
- * app: consumer / industrial / mil-spec / restricted / classified / covert / gold.
+ * 将皮肤来源稀有度（例如 ByMykel/CSGO-API 里的 "Covert"、"Extraordinary"、
+ * "Mil-Spec Grade"）归一到项目汰换档位：consumer / industrial / mil-spec /
+ * restricted / classified / covert / gold。
  *
- * Knives and gloves are always treated as {@code gold} based on the weapon name, since
- * their source rarity is inconsistent ("Covert"/"Extraordinary") yet they are the暗金
- * (gold) tier for trade-up purposes.
+ * 刀和手套按武器名一律视为 {@code gold}，因为来源稀有度可能是 "Covert" 或
+ * "Extraordinary"，但在汰换体系里都属于暗金（gold）档。
  */
 public final class SkinRarity {
     private SkinRarity() {
