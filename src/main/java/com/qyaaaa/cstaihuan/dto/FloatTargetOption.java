@@ -12,6 +12,6 @@ public class FloatTargetOption {
     private double minFloat;
     private double maxFloat;
     private double price;
-    // "catalog" = from BUFF catalog (has goods_id/price); "library" = float-range library only.
+    // catalog 表示来自 BUFF 目录（有 goods_id/价格），library 表示仅来自磨损范围基准库。
     private String floatSource;
 }

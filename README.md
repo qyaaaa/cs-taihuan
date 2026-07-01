@@ -98,6 +98,7 @@ trade-up:
 
 - [使用手册](docs/usage-guide.md)：从登录、抓库存、同步目录到生成方案的完整图文流程。
 - [汰换规则](docs/trade-up-rules.md)：方案计算公式、概率、磨损、手续费和五合一规则。
+- [开发规范](docs/development-guidelines.md)：代码注释、错误文案、测试、目录同步和提交前检查约定；agent 开发也按此规范执行。
 - [BUFF 饰品字段样例](docs/buff-item-sample.md)：库存字段来源、落库字段和前端展示字段说明。
 
 ## 常用页面

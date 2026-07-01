@@ -34,23 +34,22 @@ import org.springframework.stereotype.Service;
 @Service
 public class BuffQrLoginService {
     private static final Logger log = LoggerFactory.getLogger(BuffQrLoginService.class);
-    private static final long SESSION_TIMEOUT_MILLIS = 5L * 60L * 1000L; // 5 minutes
-    private static final long QR_RENDER_TIMEOUT_MILLIS = 22000L; // max wait for QR image to appear (BUFF render varies ~6-22s; returns as soon as found)
-    private static final long QR_POLL_INTERVAL_MILLIS = 250L; // poll interval while waiting for QR
+    private static final long SESSION_TIMEOUT_MILLIS = 5L * 60L * 1000L; // 5 分钟
+    private static final long QR_RENDER_TIMEOUT_MILLIS = 22000L; // 等二维码图片出现的最长时间（BUFF 渲染约 6~22 秒，发现即返回）
+    private static final long QR_POLL_INTERVAL_MILLIS = 250L; // 等待二维码时的轮询间隔
     private static final String BUFF_LOGIN_URL = "https://buff.163.com/account/login";
-    // A pre-warmed QR is only handed out while this fresh, so we never serve a BUFF-expired code.
+    // 预热二维码只在该新鲜窗口内发放，避免把 BUFF 已过期二维码给前端。
     private static final long WARM_MAX_AGE_MILLIS = 120_000L;
-    // How often the background refresher rebuilds the warm session before it ages out.
+    // 后台刷新器重建预热会话的间隔，确保会话过期前被替换。
     private static final long WARM_REFRESH_INTERVAL_MILLIS = 60_000L;
 
     private final BuffSessionService buffSessionService;
     private final BuffAccountService buffAccountService;
     private final Map<String, QrLoginSession> sessions = new ConcurrentHashMap<>();
 
-    // Playwright (Java) is not thread-safe: a single driver connection backs the whole browser,
-    // so concurrent calls from the warm-pool thread and request threads must be serialized.
+    // Playwright Java 不是线程安全的：整个浏览器共用一条驱动连接，因此预热线程和请求线程必须串行调用。
     private final ReentrantLock pwLock = new ReentrantLock(true);
-    // One pre-rendered session waiting to be handed out instantly on the next start request.
+    // 单个预渲染会话，用于下一次 start 请求时立即发放。
     private final AtomicReference<QrLoginSession> warmSession = new AtomicReference<>();
     private ScheduledExecutorService warmExecutor;
     private volatile boolean shuttingDown = false;
@@ -76,8 +75,7 @@ public class BuffQrLoginService {
                     "--disable-gpu"
                 )));
             log.info("Playwright browser launched successfully");
-            // Single thread keeps every warm build serialized w.r.t. each other; the pwLock keeps
-            // it serialized w.r.t. request threads. Pre-render one QR now and keep it fresh.
+            // 单线程保证预热构建之间串行，pwLock 保证预热线程与请求线程串行；立即预渲染一张二维码并保持新鲜。
             warmExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "qr-warm-pool");
                 t.setDaemon(true);
@@ -142,12 +140,12 @@ public class BuffQrLoginService {
             throw new IllegalStateException("浏览器环境未就绪，请检查服务器 Chromium 安装。");
         }
 
-        // Clean up any existing session for this account
+        // 清理该账号已有的登录会话。
         cleanupAccountSession(accountId);
         cleanupExpiredSessions();
 
         try {
-            // Fast path: hand out a pre-rendered QR if one is fresh, then refill in the background.
+            // 快路径：如果已有新鲜的预渲染二维码，直接发给前端，再后台补充下一张。
             QrLoginSession session = takeWarmSession();
             if (session != null) {
                 long now = Instant.now().toEpochMilli();
@@ -156,8 +154,7 @@ public class BuffQrLoginService {
                 session.expiresAt = now + SESSION_TIMEOUT_MILLIS;
                 log.info("QR login session={} served from warm pool, accountId={}", session.sessionId, accountId);
             } else {
-                // Slow path: nothing warm available, build synchronously. captureQrCode already
-                // falls back to a QR-box-only screenshot, so we never show a full-page capture.
+                // 慢路径：没有可用预热会话时同步创建。captureQrCode 已内置二维码区域截图兜底，不会展示整页截图。
                 session = buildSession(accountId, UUID.randomUUID().toString());
             }
 
@@ -165,7 +162,7 @@ public class BuffQrLoginService {
             log.info("QR login session={} created, status={}, accountId={}, expiresAt={}",
                 session.sessionId, session.status, session.accountId, Long.valueOf(session.expiresAt));
 
-            // Top the warm pool back up for the next request.
+            // 为下一次请求重新补充预热会话。
             scheduleWarm();
 
             return new QrLoginStartResponse(
@@ -179,13 +176,12 @@ public class BuffQrLoginService {
         } catch (Exception e) {
             log.error("Failed to start QR login: {}", e.getMessage(), e);
             scheduleWarm();
-            // Surface a clean, actionable message (handled -> 400) instead of a raw 500 stack.
+            // 返回清晰可处理的错误信息（转成 400），避免暴露原始 500 堆栈。
             throw new IllegalArgumentException("BUFF 登录页暂时无法访问（可能被风控限流），请稍候重试，或改用「手动导入」。");
         }
     }
 
-    // Navigates to the BUFF login page under the Playwright lock, retrying once on transient
-    // connection failures (BUFF intermittently resets the connection under load).
+    // 在 Playwright 锁内导航到 BUFF 登录页；遇到临时连接失败时重试一次（BUFF 高负载下偶尔会重置连接）。
     private void navigateWithRetry(Page page, String sessionId) {
         try {
             page.navigate(BUFF_LOGIN_URL, new Page.NavigateOptions()
@@ -205,7 +201,7 @@ public class BuffQrLoginService {
         }
     }
 
-    // Atomically takes the warm session if it is still fresh, usable, and on the login page.
+    // 原子取出预热会话：只有仍然新鲜、可用且停留在登录页时才返回。
     private QrLoginSession takeWarmSession() {
         QrLoginSession warm = warmSession.getAndSet(null);
         if (warm == null) {
@@ -222,8 +218,8 @@ public class BuffQrLoginService {
     }
 
     /**
-     * Builds a fresh login session with the QR already captured. Shared by the synchronous slow
-     * path and the warm-pool pre-render. All Playwright calls run under {@link #pwLock}.
+     * 创建一个已捕获二维码的新登录会话；同步慢路径和预热会话复用这段逻辑。
+     * 所有 Playwright 调用都必须在 {@link #pwLock} 保护下执行。
      */
     private QrLoginSession buildSession(Long accountId, String sessionId) {
         BrowserContext context = null;
@@ -239,16 +235,13 @@ public class BuffQrLoginService {
                 .setLocale("zh-CN"));
             page = context.newPage();
 
-            // Return as soon as the document response commits (COMMIT) instead of waiting for
-            // DOMContentLoaded/NETWORKIDLE — BUFF's heavy blocking scripts make those wait ~15s.
-            // BUFF occasionally drops the connection (ERR_CONNECTION_CLOSED, e.g. transient
-            // throttling); retry once before giving up so a blip doesn't surface as an error.
+            // 文档响应提交（COMMIT）后立即返回，不等 DOMContentLoaded/NETWORKIDLE；
+            // BUFF 的重脚本会让那些状态多等约 15 秒。BUFF 偶发断连时重试一次，避免短暂波动直接暴露给用户。
             log.info("Building QR login session={}, navigating to BUFF login page...", sessionId);
             navigateWithRetry(page, sessionId);
 
             String currentUrl = page.url().toLowerCase();
-            // If we somehow land already logged in (existing cookies), BUFF redirects away from the
-            // login page. Detect it under the lock; persist cookies after releasing the lock.
+            // 如果因已有 cookie 直接处于登录态，BUFF 会跳出登录页；锁内只做检测，锁外再持久化 cookie。
             if (!currentUrl.contains("/account/login")) {
                 List<Cookie> cookies = context.cookies();
                 if (hasLoginCookie(cookies)) {
@@ -258,14 +251,14 @@ public class BuffQrLoginService {
             }
         } catch (Exception e) {
             if (context != null) {
-                try { context.close(); } catch (Exception ex) { /* ignore */ }
+                try { context.close(); } catch (Exception ex) { /* 忽略关闭失败 */ }
             }
             pwLock.unlock();
             throw new IllegalStateException("启动扫码登录失败: " + e.getMessage(), e);
         }
         pwLock.unlock();
 
-        // captureQrCode locks per poll internally so it doesn't block status polls while it waits.
+        // captureQrCode 每次轮询内部自行加锁，等待期间不会阻塞状态轮询。
         String qrcodeBase64 = null;
         if (!"SUCCESS".equals(status)) {
             qrcodeBase64 = captureQrCode(page, sessionId);
@@ -282,7 +275,7 @@ public class BuffQrLoginService {
         session.createdAt = now;
         session.expiresAt = now + SESSION_TIMEOUT_MILLIS;
 
-        // DB writes for the rare "already logged in" case happen outside the Playwright lock.
+        // 罕见的“已登录”分支需要写数据库，放在 Playwright 锁外执行。
         if ("SUCCESS".equals(status) && cookieStrForSuccess != null) {
             try {
                 session.accountId = Long.valueOf(resolveOrCreateAccountId(accountId));
@@ -294,7 +287,7 @@ public class BuffQrLoginService {
         return session;
     }
 
-    // Submits a warm refresh to the single warm thread (no-op if one is already fresh).
+    // 提交预热会话刷新任务到单线程；已有新鲜预热会话时不做事。
     private void scheduleWarm() {
         if (shuttingDown || warmExecutor == null || !isAvailable()) {
             return;
@@ -302,11 +295,11 @@ public class BuffQrLoginService {
         try {
             warmExecutor.execute(this::ensureWarmFresh);
         } catch (Exception e) {
-            // Executor shutting down; ignore.
+            // 线程池正在关闭，忽略即可。
         }
     }
 
-    // Runs only on the single warm thread: rebuilds the warm session when missing or stale.
+    // 只在预热单线程中运行：缺少预热会话或已过期时重建。
     private void ensureWarmFresh() {
         if (shuttingDown || !isAvailable()) {
             return;
@@ -343,18 +336,18 @@ public class BuffQrLoginService {
             return new QrLoginStatusResponse(sessionId, "EXPIRED", "登录会话已过期或不存在。", false, false);
         }
 
-        // Check timeout
+        // 检查二维码是否超时。
         if (Instant.now().toEpochMilli() > session.expiresAt) {
             cleanupSession(sessionId);
             return new QrLoginStatusResponse(sessionId, "EXPIRED", "二维码已过期，请重新获取。", false, false);
         }
 
         if ("SUCCESS".equals(session.status)) {
-            // Already succeeded
+            // 已经登录成功。
             return new QrLoginStatusResponse(sessionId, "SUCCESS", "登录成功。", true, true, session.accountId);
         }
 
-        // Read all page state in a single locked block; do DB work afterwards outside the lock.
+        // 在一个锁定区块中读取页面状态；后续数据库操作放到锁外。
         boolean onLoginPage;
         List<Cookie> cookies = null;
         boolean qrInvalid = false;
@@ -382,10 +375,10 @@ public class BuffQrLoginService {
         }
         pwLock.unlock();
 
-        // Login complete: BUFF redirects away from /account/login once the scan is confirmed.
+        // 登录完成后，BUFF 会在扫码确认后跳出 /account/login。
         if (!onLoginPage) {
             if (cookies == null || !hasLoginCookie(cookies)) {
-                // Redirected but no session cookie yet; keep waiting one more poll.
+                // 已跳转但 session cookie 尚未出现，再等一轮。
                 return new QrLoginStatusResponse(sessionId, session.status, "登录跳转中，请稍候...", false, false);
             }
             log.info("QR login session={} left login page, extracting cookies...", sessionId);
@@ -417,7 +410,7 @@ public class BuffQrLoginService {
         log.info("QR login session={} cancelled", sessionId);
     }
 
-    // BUFF renders its login QR as an <img> with a data:image base64 src inside #qr_code_box.
+    // BUFF 登录二维码渲染为 #qr_code_box 内 src 为 data:image base64 的 img。
     private static final String[] QR_SELECTORS = {
         "#qr_code_box img",
         "#login_qr_code_content img",
@@ -425,8 +418,8 @@ public class BuffQrLoginService {
         ".login-qrcode img",
     };
 
-    // Returns the base64 payload (without the data URL prefix) of BUFF's login QR code. Polls under
-    // the Playwright lock per attempt and sleeps outside it, so status polls can interleave.
+    // 返回 BUFF 登录二维码的 base64 内容（不含 data URL 前缀）。每次尝试时加 Playwright 锁，
+    // 休眠等待放在锁外，因此状态轮询可以穿插执行。
     private String captureQrCode(Page page, String sessionId) {
         long deadline = Instant.now().toEpochMilli() + QR_RENDER_TIMEOUT_MILLIS;
         while (Instant.now().toEpochMilli() < deadline) {
@@ -442,8 +435,7 @@ public class BuffQrLoginService {
                 break;
             }
         }
-        // The crisp data:image never showed up in time. Rather than capturing the whole page,
-        // screenshot just the QR box so the user still sees only the QR (slightly larger image).
+        // 清晰的 data:image 没及时出现时，只截图二维码区域而不是整页，前端仍只展示二维码（图片会略大）。
         String boxShot = captureQrBoxScreenshotLocked(page);
         if (boxShot != null) {
             log.info("QR login session={}, QR captured via box element screenshot (data URL timed out)", sessionId);
@@ -453,7 +445,7 @@ public class BuffQrLoginService {
         return null;
     }
 
-    // One locked attempt to read the QR data URL from any known selector; null if not ready.
+    // 在锁内尝试从已知选择器读取二维码 data URL；未就绪时返回 null。
     private String tryReadQrCode(Page page) {
         pwLock.lock();
         try {
@@ -505,7 +497,7 @@ public class BuffQrLoginService {
         }
     }
 
-    // BUFF sets a non-empty `session` cookie only after a successful login.
+    // BUFF 只会在登录成功后设置非空 session cookie。
     private boolean hasLoginCookie(List<Cookie> cookies) {
         for (Cookie cookie : cookies) {
             if ("session".equalsIgnoreCase(cookie.name) && cookie.value != null && !cookie.value.isEmpty()) {
@@ -526,8 +518,7 @@ public class BuffQrLoginService {
         );
     }
 
-    // Returns the given account id, or creates a brand-new local account when none was bound
-    // to this QR session yet (the "新增 → 扫码成功后才建账号" flow).
+    // 返回传入账号 id；如果二维码会话尚未绑定账号，则创建新本地账号（“新增 → 扫码成功后才建账号”流程）。
     private long resolveOrCreateAccountId(Long accountId) {
         if (accountId != null) {
             return accountId.longValue();
@@ -539,14 +530,14 @@ public class BuffQrLoginService {
         return newId;
     }
 
-    // QR-box candidates for the element-screenshot fallback — the white login card holding the QR.
+    // 二维码区域截图兜底用的候选选择器，即承载二维码的白色登录卡片。
     private static final String[] QR_BOX_SELECTORS = {
         "#qr_code_box",
         "#login_qr_code_content",
         ".login-qrcode",
     };
 
-    // Screenshots only the QR card element (not the full page), returned as base64 PNG.
+    // 只截取二维码卡片元素（不是整页），返回 base64 PNG。
     private String captureQrBoxScreenshotLocked(Page page) {
         pwLock.lock();
         try {

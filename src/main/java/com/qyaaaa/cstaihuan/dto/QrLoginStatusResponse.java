@@ -11,8 +11,7 @@ public class QrLoginStatusResponse {
     private String message;
     private boolean connected;
     private boolean valid;
-    // Set when a login succeeds for a "pending" QR session that had no account yet:
-    // the backend creates the account and returns its id so the frontend can switch to it.
+    // 无账号 pending 二维码会话登录成功时返回：后端创建账号并返回 id，前端据此切换账号。
     private Long accountId;
 
     public QrLoginStatusResponse(String sessionId, String status, String message, boolean connected, boolean valid) {

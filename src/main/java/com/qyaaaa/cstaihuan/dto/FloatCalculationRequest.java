@@ -13,10 +13,10 @@ import lombok.Data;
 
 @Data
 public class FloatCalculationRequest {
-    // Either targetGoodsId (BUFF catalog) or targetName (float-range library) must be provided.
+    // targetGoodsId（BUFF 目录）和 targetName（磨损范围基准库）至少提供一个。
     private String targetGoodsId;
 
-    // Used when the target only exists in the float-range library (no BUFF goods_id).
+    // 目标只存在于磨损范围基准库、没有 BUFF goods_id 时使用。
     private String targetName;
 
     @NotNull(message = ErrorMessages.TARGET_FLOAT_REQUIRED)

@@ -43,7 +43,7 @@ const createSlot = () => ({
 })
 
 const form = reactive({
-  // Stable selection key: goods_id for catalog items, name for library-only items.
+  // 稳定选择键：目录项用 goods_id，仅基准库项用名称。
   targetKey: '',
   targetFloat: 0.05201314,
   contractSize: 10,
@@ -132,8 +132,7 @@ const onCollectionChange = () => {
 }
 
 const onRarityChange = () => {
-  // Knives/gloves (gold) have no collection; clear & disable the collection filter
-  // so the two conditions don't conflict into an empty result.
+  // 刀/手套（gold）没有收藏品；清空并禁用收藏品筛选，避免两个条件冲突导致空结果。
   if (selectedRarity.value === 'gold') {
     selectedCollection.value = ''
   }
@@ -302,7 +301,7 @@ const normalizeTarget = (target) => {
   return {
     ...target,
     goodsId,
-    // Stable selection key: goods_id when available, otherwise the (unique) name.
+    // 稳定选择键：有 goods_id 时用它，否则用唯一名称。
     key: goodsId || target.name,
     floatSource: target.floatSource || target.float_source || 'catalog',
     rarity: target.rarity,
@@ -718,7 +717,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
 </template>
 
 <style scoped>
-/* ---- Target panel ---- */
+/* ---- 目标面板 ---- */
 .float-target-panel {
   position: relative;
   display: flex;
@@ -731,7 +730,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
     rgba(23, 27, 34, 0.96);
 }
 
-/* ---- Result panel ---- */
+/* ---- 结果面板 ---- */
 .float-result-panel {
   position: relative;
   padding: 20px;
@@ -759,14 +758,14 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
     rgba(23, 27, 34, 0.96);
 }
 
-/* ---- Material panel ---- */
+/* ---- 材料面板 ---- */
 .float-material-panel {
   padding: 20px;
   border: 1px solid var(--line);
   background: rgba(20, 24, 30, 0.96);
 }
 
-/* ---- Result message ---- */
+/* ---- 结果消息 ---- */
 .result-msg-reachable {
   color: var(--good) !important;
 }
@@ -774,7 +773,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   color: var(--danger) !important;
 }
 
-/* ---- Target summary ---- */
+/* ---- 目标摘要 ---- */
 .float-target-summary {
   display: flex;
   justify-content: space-between;
@@ -805,7 +804,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   white-space: nowrap;
 }
 
-/* ---- Rule chips ---- */
+/* ---- 规则标签 ---- */
 .float-rule-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -836,7 +835,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   overflow-wrap: anywhere;
 }
 
-/* ---- Metric cards ---- */
+/* ---- 指标卡片 ---- */
 .float-metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -875,7 +874,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   color: var(--accent-strong);
 }
 
-/* ---- Bound / Source rows ---- */
+/* ---- 边界与来源行 ---- */
 .float-bound-row {
   display: flex;
   justify-content: space-between;
@@ -913,7 +912,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   color: var(--accent-strong);
 }
 
-/* ---- State pill ---- */
+/* ---- 状态标记 ---- */
 .float-state-pill {
   display: inline-flex;
   min-height: 28px;
@@ -939,7 +938,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   color: var(--danger);
 }
 
-/* ---- Contract badge ---- */
+/* ---- 合同标记 ---- */
 .float-contract-badge {
   display: inline-flex;
   min-height: 28px;
@@ -955,7 +954,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   white-space: nowrap;
 }
 
-/* ---- Slot grid ---- */
+/* ---- 槽位网格 ---- */
 .float-slot-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(190px, 1fr));
@@ -972,7 +971,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   cursor: help;
 }
 
-/* ---- Slot card ---- */
+/* ---- 槽位卡片 ---- */
 .float-slot {
   display: grid;
   gap: 8px;
@@ -1009,7 +1008,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   height: 34px;
 }
 
-/* ---- Slot head ---- */
+/* ---- 槽位头部 ---- */
 .float-slot-head {
   display: flex;
   justify-content: space-between;
@@ -1056,7 +1055,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   border-color: rgba(236, 106, 95, 0.6);
 }
 
-/* ---- Float bar ---- */
+/* ---- 磨损条 ---- */
 .float-slot-bar-track {
   width: 100%;
   height: 4px;
@@ -1072,7 +1071,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   transition: width 260ms ease;
 }
 
-/* ---- Slot meta ---- */
+/* ---- 槽位元信息 ---- */
 .float-slot-item-meta {
   margin: -2px 0 0;
   overflow: hidden;
@@ -1083,7 +1082,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   white-space: nowrap;
 }
 
-/* ---- Slot status ---- */
+/* ---- 槽位状态 ---- */
 .float-slot-status {
   display: inline-flex;
   min-height: 24px;
@@ -1108,7 +1107,7 @@ const isStatTrakItem = (item) => /stattrak|暗金/i.test(`${displayItemName(item
   color: var(--good);
 }
 
-/* ---- Responsive ---- */
+/* ---- 响应式 ---- */
 @media (max-width: 1180px) {
   .float-slot-grid,
   .float-slot-grid.compact {

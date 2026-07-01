@@ -19,7 +19,7 @@ export const validateSessionApi = (accountId = null) => postJson(accountPath(acc
 
 export const deleteSession = (accountId = null) => request(accountPath(accountId, ''), { method: 'DELETE' })
 
-// QR code login APIs
+// 二维码登录接口。
 export const startQrLogin = (accountId = null) => postJson(qrLoginPath(accountId, '/start'), {})
 
 export const getQrLoginStatus = (sessionId, accountId = null) =>

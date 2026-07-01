@@ -47,8 +47,7 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
     resetQrLogin()
     loadingSession.value = true
     try {
-      // For a pending new account, start without an account id so the backend only
-      // creates the account once the scan actually succeeds.
+      // pending 新账号先不传 account id，后端只在扫码真正成功后创建账号。
       const startAccountId = pendingNewAccount?.value ? null : resolveAccountId()
       const payload = await startQrLogin(startAccountId)
       qrLogin.active = true
@@ -58,12 +57,12 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
       qrLogin.message = payload.message
 
       if (payload.status === 'SUCCESS') {
-        // Already logged in
+        // 已经处于登录态。
         await onQrLoginSuccess(payload)
         return
       }
 
-      // Start polling for status
+      // 开始轮询扫码状态。
       qrLogin.pollTimer = setInterval(() => pollQrLoginStatus(), 2000)
     } catch (error) {
       ElMessage.error(error.message || '启动扫码登录失败')
@@ -93,7 +92,7 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
         }
       }
     } catch (error) {
-      // Polling errors are expected, silently retry
+      // 轮询期间偶发错误可预期，静默重试。
     }
   }
 
@@ -106,7 +105,7 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
     qrLogin.qrcode = null
     sessionDialogVisible.value = false
     ElMessage.success('扫码登录成功，正在校验会话...')
-    // Refresh the account list first; the backend may have just created a new account.
+    // 先刷新账号列表；后端可能刚刚创建了新账号。
     await onAccountUpdated?.()
     if (payload?.accountId) {
       if (pendingNewAccount) {
@@ -123,7 +122,7 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
       try {
         await cancelQrLogin(qrLogin.sessionId, resolveAccountId())
       } catch (error) {
-        // Ignore cancel errors
+        // 忽略取消失败。
       }
     }
     resetQrLogin()
@@ -194,11 +193,10 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
       return
     }
     loadingSession.value = true
-    // Track an account created in this call so we can roll it back if the import fails,
-    // avoiding a leftover empty account.
+    // 记录本次调用创建的账号，导入失败时回滚，避免留下空账号。
     let createdAccount = null
     try {
-      // For a pending new account, only create it now that a cookie is actually being saved.
+      // pending 新账号只有在确实保存 Cookie 时才创建。
       if (pendingNewAccount?.value) {
         createdAccount = await createLocalAccount?.()
         if (!createdAccount) {
@@ -221,13 +219,13 @@ export const useSession = ({ restorePersistedInventory, accountId, onAccountUpda
       }
     } catch (error) {
       ElMessage.error(error.message || '保存会话失败')
-      // Roll back the just-created account so a failed import leaves no empty account.
+      // 回滚刚创建的账号，避免导入失败后留下空账号。
       if (createdAccount) {
         try {
           await deleteAccountApi(createdAccount.id)
           await onAccountUpdated?.()
         } catch (rollbackError) {
-          // Best-effort cleanup; ignore rollback failures.
+          // 尽力清理，忽略回滚失败。
         }
       }
     } finally {

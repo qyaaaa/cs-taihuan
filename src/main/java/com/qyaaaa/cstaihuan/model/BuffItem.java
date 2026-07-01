@@ -58,8 +58,7 @@ public class BuffItem {
         return withCatalog(skin, price);
     }
 
-    // Same as withCatalog but overrides the price — used to value a material at its wear-tier
-    // catalog price instead of the inventory floor price (sell_min_price of the whole skin).
+    // 与 withCatalog 相同，但覆盖价格：用于按素材磨损档目录价计价，而不是按整皮库存地板价计价。
     public BuffItem withCatalog(CatalogSkin skin, double newPrice) {
         return new BuffItem(assetId, name, newPrice, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
     }

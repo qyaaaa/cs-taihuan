@@ -282,10 +282,9 @@ public class BuffApiClient {
     }
 
     /**
-     * Builds a CatalogSkin for every wear variant in a goods detail's relative_goods. Those rows are
-     * minimal (wear tag + price + goods_id + goods_name only), so we inherit the base skin's
-     * collection/rarity/category and derive each variant's float range from its wear tier. Used by
-     * the outcome backfill so a fetched skin lands with ALL its wear tiers priced, not just one.
+     * 根据商品详情里的 relative_goods 为每个磨损变体构造 CatalogSkin。这些行只有磨损标签、
+     * 价格、goods_id 和 goods_name 等最小信息，因此继承基础皮肤的收藏品、档位和分类，
+     * 再由名称中的磨损档推导范围。产物补齐流程依赖它一次落齐所有磨损档价格，而不是只落当前档。
      */
     public List<CatalogSkin> wearVariantsFromRelativeGoods(Map<String, Object> payload, CatalogSkin base) {
         List<CatalogSkin> variants = new ArrayList<CatalogSkin>();
@@ -329,8 +328,7 @@ public class BuffApiClient {
         return request(url, cookie, baseUrl + "/market/csgo");
     }
 
-    // Searches BUFF market goods by keyword and returns matched {goodsId, name} rows. Used to
-    // resolve goods_ids for collection-roster skins the user doesn't own (to backfill outcome prices).
+    // 按关键词搜索 BUFF 市场商品，返回匹配的 {goodsId, name} 行；用于给用户未拥有的收藏品皮肤补 goods_id 和产物价格。
     public List<Map<String, Object>> searchGoods(String baseUrl, String cookie, String game, String keyword, int pageNum) {
         URI uri = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/goods")
             .queryParam("game", game)
@@ -379,7 +377,7 @@ public class BuffApiClient {
 
         ResponseEntity<Map> response;
         try {
-            // Pass the URI (not a String) so RestTemplate doesn't re-encode the already-encoded query.
+            // 传 URI 而不是字符串，避免 RestTemplate 再次编码已经编码过的查询参数。
             response = restTemplate.exchange(uri, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
         } catch (HttpClientErrorException.TooManyRequests ex) {
             log.warn("BUFF request rate limited, url={}", url);

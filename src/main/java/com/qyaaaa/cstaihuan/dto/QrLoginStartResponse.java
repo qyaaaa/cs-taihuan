@@ -11,7 +11,7 @@ public class QrLoginStartResponse {
     private String status;
     private String message;
     private long expiresAt;
-    // Null for a "pending" session (no account yet); the account is created on success.
+    // pending 会话还没有账号时为空；扫码成功后才创建账号。
     private Long accountId;
 
     public QrLoginStartResponse(String sessionId, String qrcode, String status, String message, long expiresAt) {

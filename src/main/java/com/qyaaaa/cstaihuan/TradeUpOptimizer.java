@@ -46,8 +46,7 @@ public final class TradeUpOptimizer {
     private final Map<String, Double> outputPriceFactors = new HashMap<String, Double>();
     private final Map<String, List<FloatPriceBand>> outputPriceBands = new HashMap<String, List<FloatPriceBand>>();
     private final Map<String, CatalogSkin> catalogByName = new HashMap<String, CatalogSkin>();
-    // Base skin name (wear suffix stripped) -> its per-wear catalog variants, for pricing an
-    // input material at the catalog price of its own wear tier rather than the skin's floor price.
+    // 基础皮肤名（去掉磨损后缀）-> 各磨损档目录变体，用于按素材自身磨损档目录价计成本，而不是用整皮地板价。
     private final Map<String, List<CatalogSkin>> catalogVariantsByBaseName = new HashMap<String, List<CatalogSkin>>();
     // 皮肤名(去磨损后缀+小写) -> 权威 paint 范围[min,max]，用于归一化输入磨损与缩放产出磨损。
     private Map<String, double[]> skinRanges = new HashMap<String, double[]>();
@@ -167,8 +166,7 @@ public final class TradeUpOptimizer {
         List<BuffItem> enriched = new ArrayList<BuffItem>();
         for (BuffItem item : items) {
             CatalogSkin skin = catalogByName.get(item.getName());
-            // Value the material at its own wear tier's catalog price; the inventory price is the
-            // skin's floor (sell_min_price), which under-prices low-wear inputs in the EV.
+            // 素材按自身磨损档目录价计价；库存价是整皮 sell_min_price，会低估低磨素材的 EV 成本。
             double wearPrice = wearTierInputPrice(item);
             if (skin != null) {
                 enriched.add(item.withCatalog(skin, wearPrice));
@@ -179,9 +177,8 @@ public final class TradeUpOptimizer {
         return enriched;
     }
 
-    // Resolves the catalog price of an input material at its own wear tier. Prefers an exact
-    // (wear-suffixed) name match, then the same base skin's variant matching the item's float tier,
-    // and finally falls back to the inventory price so a missing catalog row never breaks the EV.
+    // 解析投入素材自身磨损档对应的目录价：先精确匹配带磨损后缀名称，再匹配同基础皮肤中与素材磨损档一致的变体，
+    // 最后回退到库存价，确保缺少目录行时不会算崩 EV。
     private double wearTierInputPrice(BuffItem item) {
         CatalogSkin exact = catalogByName.get(item.getName());
         if (exact != null && exact.getPrice() > 0.0d) {
@@ -198,9 +195,8 @@ public final class TradeUpOptimizer {
         return item.getPrice();
     }
 
-    // Picks the variant whose name's wear tier matches the float's standard CS wear tier. Mirrors
-    // OutputFamily.selectVariantForFloat: BUFF's per-exterior paintwear_range is unreliable, so we
-    // match by wear tier rather than the variant's min/max float.
+    // 选择名称磨损档与该 float 的 CS 标准外观档一致的变体。逻辑与 OutputFamily.selectVariantForFloat 保持一致：
+    // BUFF 单个外观档的 paintwear_range 不稳定，因此按名称档位匹配，而不是按变体 min/max float 匹配。
     private static CatalogSkin variantForFloatTier(List<CatalogSkin> variants, double floatValue) {
         if (variants == null || variants.isEmpty()) {
             return null;
@@ -761,9 +757,8 @@ public final class TradeUpOptimizer {
             if (variants.isEmpty()) {
                 return null;
             }
-            // Pick the exterior by the standard CS wear tier of the computed float, matched
-            // against each variant's name suffix. BUFF's per-exterior paintwear_range is
-            // sometimes the skin's whole range, so we can't trust variant min/max here.
+            // 根据计算出的磨损值所属 CS 标准外观档，匹配各变体名称后缀。BUFF 单外观档 paintwear_range
+            // 有时会给出整皮范围，因此这里不能信任变体 min/max。
             int targetTier = com.qyaaaa.cstaihuan.util.WearSuffix.wearTierForFloat(floatValue);
             CatalogSkin tierFallback = null;
             int bestTierDistance = Integer.MAX_VALUE;
@@ -787,8 +782,7 @@ public final class TradeUpOptimizer {
                     rangeFallback = variant;
                 }
             }
-            // Prefer the closest named exterior; fall back to the nearest-range variant only
-            // when no variant carries a recognizable wear suffix.
+            // 优先使用名称档位最接近的变体；只有所有变体都没有可识别磨损后缀时，才回退到范围最近的变体。
             return tierFallback != null ? tierFallback : rangeFallback;
         }
 
