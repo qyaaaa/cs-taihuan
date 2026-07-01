@@ -62,6 +62,7 @@ class CatalogApplicationServiceTest {
     @Mock private InventorySnapshotStoreService snapshotStore;
     @Mock private BuffSessionService buffSessionService;
     @Mock private BuffAccountService buffAccountService;
+    @Mock private com.qyaaaa.cstaihuan.service.SkinFloatRangeService skinFloatRangeService;
 
     private BuffProperties buffProperties;
     private CatalogApplicationService service;
@@ -80,7 +81,7 @@ class CatalogApplicationServiceTest {
 
         service = new CatalogApplicationService(
             catalogService, snapshotStore, buffSessionService,
-            buffApiClient, buffProperties, taskStore, buffAccountService
+            buffApiClient, buffProperties, taskStore, buffAccountService, skinFloatRangeService
         );
     }
 

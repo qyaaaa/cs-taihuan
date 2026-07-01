@@ -1,6 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createCatalogSyncTask } from '../api/catalog'
+import { backfillOutcomesApi, createCatalogSyncTask } from '../api/catalog'
 import { optimizeTradeUp, persistNextTierCatalogApi } from '../api/tradeUp'
 
 const PLAN_TOP_K = 10
@@ -10,6 +10,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
   const loadingPlans = ref(false)
   const loadingNextTier = ref(false)
   const loadingCatalog = ref(false)
+  const loadingBackfill = ref(false)
   const selectedPlanIndex = ref(0)
   const catalogMissing = ref(false)
 
@@ -127,6 +128,32 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
     }
   }
 
+  // 补全某方案涉及的所有收藏品的产物档皮肤（从 BUFF 按名搜抓缺价皮肤），完成后自动重算方案。
+  const backfillOutcomes = async (collections) => {
+    const list = (Array.isArray(collections) ? collections : [collections]).filter(Boolean)
+    if (!list.length) {
+      ElMessage.warning('该方案缺少收藏品信息，无法补全')
+      return
+    }
+    loadingBackfill.value = true
+    try {
+      ElMessage.info(`正在补全 ${list.length} 个收藏品的产物数据，可能需要一会儿…`)
+      let matchedTotal = 0
+      let rateLimited = false
+      for (const collection of list) {
+        const result = await backfillOutcomesApi(collection, resolveAccountId())
+        matchedTotal += result?.skinsMatched ?? 0
+        rateLimited = rateLimited || Boolean(result?.rateLimited)
+      }
+      ElMessage.success(`已补全 ${matchedTotal} 个产物皮肤${rateLimited ? '（部分因 BUFF 限流未完成，可稍后再补）' : ''}，正在重算方案…`)
+      await optimizePlans()
+    } catch (error) {
+      ElMessage.error(String(error.message || '补全产物数据失败'))
+    } finally {
+      loadingBackfill.value = false
+    }
+  }
+
   const syncCatalog = async () => {
     loadingCatalog.value = true
     try {
@@ -182,6 +209,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
     loadingPlans,
     loadingNextTier,
     loadingCatalog,
+    loadingBackfill,
     catalogMissing,
     selectedPlanIndex,
     planForm,
@@ -193,6 +221,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
     resetPlans,
     updatePlanFilter,
     optimizePlans,
+    backfillOutcomes,
     syncCatalog,
     persistNextTierCatalog,
   }
@@ -345,6 +374,12 @@ const sortValue = (plan, sortBy) => {
   if (sortBy === 'rarityRank') {
     const rarity = typeof plan === 'string' ? plan : plan?.rarity
     return rarityRanks[rarity] || 0
+  }
+  if (sortBy === 'expectedOutputValue') {
+    // 「期望值高到低」按 期望产出/投入 的比例排，而不是绝对金额，避免高价合同仅因数额大而靠前。
+    const cost = Number(plan?.inputCost ?? plan?.input_cost ?? 0)
+    const ev = Number(plan?.expectedOutputValue ?? plan?.expected_output_value ?? 0)
+    return cost > 0 ? ev / cost : 0
   }
   return Number(plan?.[sortBy] || 0)
 }

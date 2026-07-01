@@ -314,6 +314,10 @@ const optimizeFromOverview = () => {
 onMounted(async () => {
   await accounts.loadAccounts()
   await refreshCurrentAccountData()
+  // 直接刷新/深链进入方案页时也自动生成方案（changePage 只在切 tab 时触发，刷新不走它）。
+  if (activePage.value === 'plans') {
+    generatePlansOnEnter()
+  }
 })
 </script>
 
@@ -424,10 +428,12 @@ onMounted(async () => {
           :can-generate-plans="!planDisabledReason"
           :generate-disabled-reason="planDisabledReason"
           :catalog-missing="plans.catalogMissing.value"
+          :loading-backfill="plans.loadingBackfill.value"
           @optimize-plans="plans.optimizePlans"
           @go-data="changePage('overview')"
           @select-plan="plans.selectedPlanIndex.value = $event"
           @update-filter="plans.updatePlanFilter"
+          @backfill-collection="plans.backfillOutcomes"
         />
 
         <FloatCalculatorPage

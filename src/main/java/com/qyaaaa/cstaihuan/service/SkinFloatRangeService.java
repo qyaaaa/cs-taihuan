@@ -252,6 +252,40 @@ public class SkinFloatRangeService {
         return jdbcTemplate.query(sql.toString(), ROW_MAPPER, args.toArray());
     }
 
+    /**
+     * Maps each skin (normalized zh base name) to its authoritative paint-kit float range [min,max].
+     * Trade-up float math needs the skin's full paint range — NOT a wear-tier sub-range — for both
+     * normalizing inputs and scaling the output.
+     */
+    public Map<String, double[]> nameToRange() {
+        Map<String, double[]> map = new java.util.HashMap<String, double[]>();
+        jdbcTemplate.query(
+            "SELECT name_zh, min_float, max_float FROM skin_float_range WHERE name_zh IS NOT NULL AND name_zh <> ''",
+            (java.sql.ResultSet rs) -> {
+                String key = WearSuffix.toRangeMatchKey(rs.getString("name_zh"));
+                double min = rs.getDouble("min_float");
+                double max = rs.getDouble("max_float");
+                if (!key.isEmpty() && max > min) {
+                    map.putIfAbsent(key, new double[] {min, max});
+                }
+            }
+        );
+        return map;
+    }
+
+    /** Base skin names (no wear suffix) of a collection at a given rarity — the authoritative roster. */
+    public List<String> collectionSkinNames(String collectionZh, String rarity) {
+        if (!StringUtils.hasText(collectionZh) || !StringUtils.hasText(rarity)) {
+            return new ArrayList<String>();
+        }
+        return jdbcTemplate.query(
+            "SELECT DISTINCT name_zh FROM skin_float_range "
+                + "WHERE collection_zh = ? AND rarity = ? AND name_zh IS NOT NULL AND name_zh <> ''",
+            (rs, rowNum) -> rs.getString("name_zh"),
+            collectionZh.trim(), rarity.trim()
+        );
+    }
+
     /** Distinct collection names (zh + en) for the frontend dropdown. */
     public List<String[]> listCollections() {
         return jdbcTemplate.query(

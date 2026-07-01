@@ -298,6 +298,42 @@ class TradeUpOptimizerTest {
         return bands;
     }
 
+    // 输入材料应按其磨损档的 catalog 价计，而不是库存里的全网地板价(sell_min_price)。
+    @Test
+    void inputMaterialPricedAtItsWearTierCatalogPrice() {
+        List<CatalogSkin> catalog = new ArrayList<CatalogSkin>();
+        catalog.add(catalogSkin("mat-fn", "AK-47 | 测试材料 (崭新出厂)", "测试收藏品", "mil-spec", 0.0d, 0.07d, 100.0d));
+        catalog.add(catalogSkin("mat-bs", "AK-47 | 测试材料 (久经沙场)", "测试收藏品", "mil-spec", 0.45d, 1.0d, 5.0d));
+        TradeUpOptimizer optimizer = new TradeUpOptimizer(catalog, 0.025d);
+
+        // 库存里一件崭新(FN)材料，库存价是地板价 5（= 全皮肤 sell_min_price）。
+        BuffItem fnItem = new BuffItem("a1", "AK-47 | 测试材料 (崭新出厂)", 5.0d, Double.valueOf(0.03d), "0.03",
+            null, null, "测试收藏品", "mil-spec", "weapon_ak47", "mil-spec", "军规级", true, "inv-1",
+            new LinkedHashMap<String, Object>());
+
+        List<BuffItem> enriched = optimizer.enrichInventory(Collections.singletonList(fnItem));
+
+        assertThat(enriched).hasSize(1);
+        assertThat(enriched.get(0).getPrice()).isEqualTo(100.0d);
+    }
+
+    // 目录里查不到对应皮肤时，回退到库存价，绝不因缺数据把成本算崩。
+    @Test
+    void inputMaterialFallsBackToInventoryPriceWhenNotInCatalog() {
+        List<CatalogSkin> catalog = new ArrayList<CatalogSkin>();
+        catalog.add(catalogSkin("out-ft", "AK-47 | 别的皮肤 (久经沙场)", "测试收藏品", "restricted", 0.15d, 0.38d, 50.0d));
+        TradeUpOptimizer optimizer = new TradeUpOptimizer(catalog, 0.025d);
+
+        BuffItem item = new BuffItem("a1", "AK-47 | 不在目录 (崭新出厂)", 7.0d, Double.valueOf(0.03d), "0.03",
+            null, null, "测试收藏品", "mil-spec", "weapon_ak47", "mil-spec", "军规级", true, "inv-1",
+            new LinkedHashMap<String, Object>());
+
+        List<BuffItem> enriched = optimizer.enrichInventory(Collections.singletonList(item));
+
+        assertThat(enriched).hasSize(1);
+        assertThat(enriched.get(0).getPrice()).isEqualTo(7.0d);
+    }
+
     private static FloatPriceBand band(double minFloat, double maxFloat, double price) {
         FloatPriceBand band = new FloatPriceBand();
         band.setMinFloat(minFloat);

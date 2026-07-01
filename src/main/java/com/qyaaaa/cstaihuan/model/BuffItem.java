@@ -55,7 +55,17 @@ public class BuffItem {
     }
 
     public BuffItem withCatalog(CatalogSkin skin) {
-        return new BuffItem(assetId, name, price, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
+        return withCatalog(skin, price);
+    }
+
+    // Same as withCatalog but overrides the price — used to value a material at its wear-tier
+    // catalog price instead of the inventory floor price (sell_min_price of the whole skin).
+    public BuffItem withCatalog(CatalogSkin skin, double newPrice) {
+        return new BuffItem(assetId, name, newPrice, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
+    }
+
+    public BuffItem withPrice(double newPrice) {
+        return new BuffItem(assetId, name, newPrice, floatValue, floatValueRaw, imageUrl, wearName, collection, rarity, categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
     }
 
     public void setRarity(String rarity) {

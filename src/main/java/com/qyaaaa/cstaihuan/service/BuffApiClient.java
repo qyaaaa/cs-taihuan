@@ -6,6 +6,8 @@ import com.qyaaaa.cstaihuan.model.BuffAccountProfile;
 import com.qyaaaa.cstaihuan.model.BuffItem;
 import com.qyaaaa.cstaihuan.model.CatalogSkin;
 import com.qyaaaa.cstaihuan.util.SkinRarity;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -279,6 +281,45 @@ public class BuffApiClient {
         return new ArrayList<CatalogSkin>(skinsByIdentity.values());
     }
 
+    /**
+     * Builds a CatalogSkin for every wear variant in a goods detail's relative_goods. Those rows are
+     * minimal (wear tag + price + goods_id + goods_name only), so we inherit the base skin's
+     * collection/rarity/category and derive each variant's float range from its wear tier. Used by
+     * the outcome backfill so a fetched skin lands with ALL its wear tiers priced, not just one.
+     */
+    public List<CatalogSkin> wearVariantsFromRelativeGoods(Map<String, Object> payload, CatalogSkin base) {
+        List<CatalogSkin> variants = new ArrayList<CatalogSkin>();
+        if (base == null) {
+            return variants;
+        }
+        Map<String, Object> data = mapValue(payload.get("data"));
+        Object relative = data.get("relative_goods");
+        if (!(relative instanceof List)) {
+            return variants;
+        }
+        for (Object row : (List<?>) relative) {
+            Map<String, Object> r = mapValue(row);
+            String goodsId = stringValue(r, "goods_id", "id");
+            String name = stringValue(r, "goods_name", "name", "market_hash_name");
+            if (goodsId == null || goodsId.trim().isEmpty() || name == null || name.trim().isEmpty()) {
+                continue;
+            }
+            CatalogSkin variant = new CatalogSkin();
+            variant.setGoodsId(goodsId.trim());
+            variant.setName(name.trim());
+            variant.setCollection(base.getCollection());
+            variant.setRarity(base.getRarity());
+            variant.setCategoryKey(base.getCategoryKey());
+            variant.setQualityLabel(base.getQualityLabel());
+            variant.setPrice(doubleValue(r, 0.0d, "sell_min_price", "price", "quick_price"));
+            double[] range = com.qyaaaa.cstaihuan.util.WearSuffix.standardWearRange(name);
+            variant.setMinFloat(range[0]);
+            variant.setMaxFloat(range[1]);
+            variants.add(variant);
+        }
+        return variants;
+    }
+
     private Map<String, Object> requestInventory(String baseUrl, String cookie, String game, int page, int pageSize) {
         String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/steam_inventory")
             .queryParam("game", game)
@@ -288,7 +329,47 @@ public class BuffApiClient {
         return request(url, cookie, baseUrl + "/market/csgo");
     }
 
+    // Searches BUFF market goods by keyword and returns matched {goodsId, name} rows. Used to
+    // resolve goods_ids for collection-roster skins the user doesn't own (to backfill outcome prices).
+    public List<Map<String, Object>> searchGoods(String baseUrl, String cookie, String game, String keyword, int pageNum) {
+        URI uri = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/goods")
+            .queryParam("game", game)
+            .queryParam("page_num", pageNum)
+            .queryParam("search", keyword)
+            .build()
+            .encode(StandardCharsets.UTF_8)
+            .toUri();
+        log.info("Searching BUFF goods, game={}, keyword={}, page={}", game, keyword, Integer.valueOf(pageNum));
+        Map<String, Object> payload = requestUri(uri, cookie, baseUrl + "/market/" + game);
+        Map<String, Object> data = mapValue(payload.get("data"));
+        List<Map<String, Object>> results = new ArrayList<Map<String, Object>>();
+        Object items = data.get("items");
+        if (items instanceof List) {
+            for (Object row : (List<?>) items) {
+                if (!(row instanceof Map)) {
+                    continue;
+                }
+                @SuppressWarnings("unchecked")
+                Map<String, Object> goods = (Map<String, Object>) row;
+                String goodsId = stringValue(goods, "id", "goods_id");
+                String name = stringValue(goods, "name", "market_hash_name");
+                if (goodsId != null && !goodsId.trim().isEmpty()) {
+                    Map<String, Object> hit = new LinkedHashMap<String, Object>();
+                    hit.put("goodsId", goodsId.trim());
+                    hit.put("name", name);
+                    results.add(hit);
+                }
+            }
+        }
+        return results;
+    }
+
     private Map<String, Object> request(String url, String cookie, String referer) {
+        return requestUri(URI.create(url), cookie, referer);
+    }
+
+    private Map<String, Object> requestUri(URI uri, String cookie, String referer) {
+        String url = uri.toString();
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.COOKIE, cookie);
         headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 SpringBoot cs-taihuan");
@@ -298,7 +379,8 @@ public class BuffApiClient {
 
         ResponseEntity<Map> response;
         try {
-            response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
+            // Pass the URI (not a String) so RestTemplate doesn't re-encode the already-encoded query.
+            response = restTemplate.exchange(uri, HttpMethod.GET, new HttpEntity<Object>(headers), Map.class);
         } catch (HttpClientErrorException.TooManyRequests ex) {
             log.warn("BUFF request rate limited, url={}", url);
             throw new BuffRateLimitException(ErrorMessages.BUFF_RATE_LIMIT);
