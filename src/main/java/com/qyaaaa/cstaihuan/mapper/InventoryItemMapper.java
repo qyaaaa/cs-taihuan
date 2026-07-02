@@ -21,5 +21,5 @@ public interface InventoryItemMapper extends BaseMapper<InventoryItem> {
 
     int carryOverFloatPrices(@Param("snapshotId") long snapshotId, @Param("prevSnapshotId") long prevSnapshotId);
 
-    List<String> selectAssetIdsMissingFloatPrice(@Param("snapshotId") long snapshotId, @Param("minPrice") double minPrice, @Param("limit") int limit);
+    int batchUpdateFloatPrice(@Param("snapshotId") long snapshotId, @Param("rows") List<java.util.Map<String, Object>> rows);
 }

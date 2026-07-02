@@ -42,6 +42,6 @@ public interface InventorySnapshotStoreService extends IService<InventorySnapsho
     /** 新快照按 asset_id 结转上一快照的精估价；返回结转行数。 */
     int carryOverFloatPrices(long snapshotId, long prevSnapshotId);
 
-    /** 还没精估价的武器件 asset_id，按价格从高到低取前 N 件。 */
-    List<String> listAssetIdsMissingFloatPrice(long snapshotId, double minPrice, int limit);
+    /** 批量写回一批件的精估价（assetId -> 价），单条 SQL。 */
+    int batchUpdateFloatPrices(long snapshotId, java.util.Map<String, Double> pricesByAssetId);
 }
