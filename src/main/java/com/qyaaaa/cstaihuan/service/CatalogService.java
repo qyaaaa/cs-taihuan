@@ -29,5 +29,8 @@ public interface CatalogService {
 
     Map<String, String> nameToCollection();
 
+    /** goods_id -> 档地板价；精估底价段直填与展示 basePrice 同源。 */
+    Map<String, Double> goodsIdToPrice();
+
     List<String> collectionSkinNames(String collection, String rarity);
 }

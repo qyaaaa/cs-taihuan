@@ -137,6 +137,13 @@
           AND collection_name IS NOT NULL
     </select>
 
+    <!-- goods_id -> 档地板价，用于精估的底价段直填/无挂单回退，保证与展示用 basePrice 同源。 -->
+    <select id="selectGoodsPrices" resultType="com.qyaaaa.cstaihuan.model.CatalogSkin">
+        SELECT goods_id, price
+        FROM catalog_skin
+        WHERE goods_id IS NOT NULL AND goods_id != ''
+    </select>
+
     <select id="selectSkinNamesByCollectionAndRarity" resultType="string">
         SELECT name
         FROM catalog_skin

@@ -114,6 +114,17 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     @Override
+    public Map<String, Double> goodsIdToPrice() {
+        Map<String, Double> map = new java.util.HashMap<String, Double>();
+        for (CatalogSkin skin : catalogSkinMapper.selectGoodsPrices()) {
+            if (skin.getGoodsId() != null && skin.getPrice() > 0.0d) {
+                map.put(skin.getGoodsId(), Double.valueOf(skin.getPrice()));
+            }
+        }
+        return map;
+    }
+
+    @Override
     public Map<String, String> nameToCollection() {
         Map<String, String> map = new java.util.HashMap<String, String>();
         for (CatalogSkin skin : catalogSkinMapper.selectNameCollections()) {

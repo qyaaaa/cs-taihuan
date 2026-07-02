@@ -332,6 +332,8 @@ const normalizeInventoryItem = (item) => ({
   collection: item.collection ?? '',
   price: numberValue(item.price),
   floatValue: nullableNumber(item.floatValue, item.float_value),
+  floatPrice: nullableNumber(item.floatPrice, item.float_price),
+  basePrice: nullableNumber(item.basePrice, item.base_price),
   floatValueRaw: item.floatValueRaw ?? item.float_value_raw ?? '',
   imageUrl: item.imageUrl ?? item.image_url ?? '',
   filterRarity: item.filterRarity ?? item.filter_rarity ?? '',

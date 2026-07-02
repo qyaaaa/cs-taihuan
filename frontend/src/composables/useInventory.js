@@ -11,6 +11,8 @@ const normalizeInventoryItem = (item) => {
     ...item,
     assetId: item.assetId ?? item.asset_id ?? null,
     floatValue: item.floatValue ?? item.float_value ?? null,
+    floatPrice: item.floatPrice ?? item.float_price ?? null,
+    basePrice: item.basePrice ?? item.base_price ?? null,
     floatValueRaw: item.floatValueRaw ?? item.float_value_raw ?? null,
     imageUrl: item.imageUrl ?? item.image_url ?? '',
     wearName: item.wearName ?? item.wear_name ?? '',

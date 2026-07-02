@@ -145,8 +145,18 @@ public class InventorySnapshotStoreServiceImpl extends ServiceImpl<InventorySnap
     }
 
     @Override
-    public List<String> listAssetIdsMissingFloatPrice(long snapshotId, double minPrice, int limit) {
-        return inventoryItemMapper.selectAssetIdsMissingFloatPrice(snapshotId, minPrice, limit);
+    public int batchUpdateFloatPrices(long snapshotId, Map<String, Double> pricesByAssetId) {
+        if (pricesByAssetId == null || pricesByAssetId.isEmpty()) {
+            return 0;
+        }
+        List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
+        for (Map.Entry<String, Double> entry : pricesByAssetId.entrySet()) {
+            Map<String, Object> row = new java.util.HashMap<String, Object>();
+            row.put("assetId", entry.getKey());
+            row.put("floatPrice", BigDecimal.valueOf(entry.getValue().doubleValue()));
+            rows.add(row);
+        }
+        return inventoryItemMapper.batchUpdateFloatPrice(snapshotId, rows);
     }
 
     private List<BuffItem> toBuffItems(List<InventoryItem> rows) {

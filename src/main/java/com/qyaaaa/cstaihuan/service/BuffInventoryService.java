@@ -41,6 +41,7 @@ public class BuffInventoryService {
     private final BuffAccountService buffAccountService;
     private final InventorySnapshotStoreService inventorySnapshotStoreService;
     private final SkinFloatRangeService skinFloatRangeService;
+    private final CatalogService catalogService;
     // 后台精估专用单线程：拉取任务提交后立即返回，精估被限流时在此线程内冷却续跑，不阻塞其它任务。
     private final java.util.concurrent.ExecutorService floatRefineExecutor =
         java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
@@ -51,7 +52,7 @@ public class BuffInventoryService {
     // 每账号同时只允许一个后台精估任务，避免连续拉取叠加重复线程。
     private final java.util.Set<Long> refineRunningAccounts = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    public BuffInventoryService(BuffProperties buffProperties, BuffApiClient buffApiClient, InventoryFileService inventoryFileService, BuffSessionService buffSessionService, BuffAccountService buffAccountService, InventorySnapshotStoreService inventorySnapshotStoreService, SkinFloatRangeService skinFloatRangeService) {
+    public BuffInventoryService(BuffProperties buffProperties, BuffApiClient buffApiClient, InventoryFileService inventoryFileService, BuffSessionService buffSessionService, BuffAccountService buffAccountService, InventorySnapshotStoreService inventorySnapshotStoreService, SkinFloatRangeService skinFloatRangeService, CatalogService catalogService) {
         this.buffProperties = buffProperties;
         this.buffApiClient = buffApiClient;
         this.inventoryFileService = inventoryFileService;
@@ -59,6 +60,7 @@ public class BuffInventoryService {
         this.buffAccountService = buffAccountService;
         this.inventorySnapshotStoreService = inventorySnapshotStoreService;
         this.skinFloatRangeService = skinFloatRangeService;
+        this.catalogService = catalogService;
     }
 
     public InventorySnapshotResponse fetchAndSave(FetchInventoryRequest request) throws Exception {
@@ -189,13 +191,18 @@ public class BuffInventoryService {
         log.info("Fetch inventory saved new snapshot, snapshotId={}, persistedItemCount={}, forceUpdate={}",
             Long.valueOf(saved.getId()), Integer.valueOf(persistedItems.size()), Boolean.valueOf(forceUpdate));
 
-        // 同一件饰品 float 不变：新快照先按 asset_id 结转上一快照的精估价（免费、瞬间）。
-        if (latest.isPresent()) {
-            int carried = inventorySnapshotStoreService.carryOverFloatPrices(saved.getId(), latest.get().getId());
-            log.info("Carried over float prices to new snapshot, snapshotId={}, carried={}", Long.valueOf(saved.getId()), Integer.valueOf(carried));
+        // 精估是辅助流程：结转/后台精估失败绝不能拖垮库存拉取本身。
+        try {
+            // 同一件饰品 float 不变：新快照先按 asset_id 结转上一快照的精估价（免费、瞬间）。
+            if (latest.isPresent()) {
+                int carried = inventorySnapshotStoreService.carryOverFloatPrices(saved.getId(), latest.get().getId());
+                log.info("Carried over float prices to new snapshot, snapshotId={}, carried={}", Long.valueOf(saved.getId()), Integer.valueOf(carried));
+            }
+            // 精估改为独立后台线程：拉取任务立即完成；后台被限流就冷却等待续跑，直到全部回填。方案页按钮做兜底。
+            submitBackgroundRefine(accountId, saved.getId(), cookie);
+        } catch (Exception ex) {
+            log.warn("Float price carry-over/refine submit failed (inventory fetch itself succeeded): {}", ex.getMessage());
         }
-        // 精估改为独立后台线程：拉取任务立即完成；后台被限流就冷却等待续跑，直到全部回填。方案页按钮做兜底。
-        submitBackgroundRefine(accountId, saved.getId(), cookie);
         if (progress != null) {
             progress.update(100, Integer.valueOf(persistedItems.size()), Integer.valueOf(persistedItems.size()), "库存快照已保存。");
         }
@@ -245,7 +252,7 @@ public class BuffInventoryService {
             }
         }
         java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<java.util.Map<String, Object>>();
-        int[] result = refineItemsGrouped(snapshot.getId(), cookie, targets, rows, null, uniqueAssetIds.size());
+        int[] result = refineItemsGrouped(snapshot.getId(), cookie, targets, rows, null, uniqueAssetIds.size(), null, null);
 
         java.util.Map<String, Object> summary = new java.util.LinkedHashMap<String, Object>();
         summary.put("snapshotId", Long.valueOf(snapshot.getId()));
@@ -261,23 +268,24 @@ public class BuffInventoryService {
     }
 
     /**
-     * 精估核心：按 (goods_id, 磨损子桶) 去重后查挂单底价，组内所有件回填同一价。
-     * float 落在档尾“底价子桶”的件市值≈档地板价，直接回填档价、不发请求；
-     * 其余件每组一次请求（max_paintwear=组内最大 float），大幅减少 BUFF 请求数。
-     * 返回 {回填件数, 跳过件数, 是否被限流(0/1), 实际查询次数}。
+     * 精估核心：按 BUFF 官方磨损子区间（固定切点 + 皮肤范围裁剪）分段，(goods_id, 段号) 去重后查挂单底价，
+     * 组内所有件批量回填同一价。落在档尾“底价段”的件直接批量回填 catalog 档地板价（与展示 basePrice 同源），零请求。
+     * 连续失败达到阈值即中止本轮（外层会刷新会话后续跑）。返回 {回填件数, 跳过件数, 是否被限流(0/1), 实际查询次数}。
      */
     private int[] refineItemsGrouped(long snapshotId, String cookie, List<BuffItem> targets,
-            java.util.List<java.util.Map<String, Object>> rowsOut, AsyncTaskService.TaskProgress progress, int maxQueries) {
+            java.util.List<java.util.Map<String, Object>> rowsOut, AsyncTaskService.TaskProgress progress, int maxQueries,
+            java.util.Map<String, double[]> skinRangesCache, java.util.Map<String, Double> catalogPricesCache) {
         String game = buffProperties.getGame();
-        long interval = Math.max(1000L, buffProperties.getCatalogSync().getRequestIntervalMillis());
+        long interval = Math.max(1000L, buffProperties.getFloatRefine().getRequestIntervalMillis());
+        java.util.Map<String, double[]> skinRanges = skinRangesCache != null ? skinRangesCache : skinFloatRangeService.nameToRange();
+        java.util.Map<String, Double> catalogPrices = catalogPricesCache != null ? catalogPricesCache : catalogService.goodsIdToPrice();
 
         int refined = 0;
         int skipped = 0;
         boolean rateLimited = false;
 
-        // 1) 按 BUFF 官方子区间（固定切点 + 皮肤实际范围裁剪，见 WearSuffix.buffPaintwearSegments）分段：
-        //    落在档尾“底价段”的件市值≈档地板价，直接回填；其余按 (goods_id, 段号) 聚组去重。
-        java.util.Map<String, double[]> skinRanges = skinFloatRangeService.nameToRange();
+        // 1) 分段：底价段的件收集起来一次批量回填 catalog 档价；其余按 (goods_id, 段号) 聚组去重。
+        java.util.Map<String, Double> floorWrites = new java.util.LinkedHashMap<String, Double>();
         java.util.Map<String, java.util.List<BuffItem>> groups = new java.util.LinkedHashMap<String, java.util.List<BuffItem>>();
         java.util.Map<String, double[]> groupQueryRange = new java.util.LinkedHashMap<String, double[]>();
         for (BuffItem item : targets) {
@@ -286,6 +294,11 @@ public class BuffInventoryService {
                 continue;
             }
             double f = item.getFloatValue().doubleValue();
+            if (Double.isNaN(f) || Double.isInfinite(f)) {
+                // 异常磨损数据不精估，避免被静默归入底价段。
+                skipped++;
+                continue;
+            }
             double[] skinRange = skinRanges.get(com.qyaaaa.cstaihuan.util.WearSuffix.toRangeMatchKey(item.getName()));
             double[][] segments = com.qyaaaa.cstaihuan.util.WearSuffix.buffPaintwearSegments(
                 item.getName(),
@@ -299,10 +312,11 @@ public class BuffInventoryService {
                 }
             }
             if (segIndex == segments.length - 1) {
-                // 底价段（档尾）：该段挂单最低价就是档地板价，直接回填、不花请求。
-                inventorySnapshotStoreService.updateFloatPrice(snapshotId, item.getAssetId(), item.getPrice());
+                // 底价段（档尾）：该段挂单最低价就是档地板价，用 catalog 档价（与 basePrice 同源），零请求。
+                double floorPrice = floorPriceOf(item, catalogPrices);
+                floorWrites.put(item.getAssetId(), Double.valueOf(floorPrice));
                 refined++;
-                appendRow(rowsOut, item, Double.valueOf(item.getPrice()));
+                appendRow(rowsOut, item, Double.valueOf(floorPrice));
                 continue;
             }
             String key = item.getGoodsId().trim() + '#' + segIndex;
@@ -315,10 +329,12 @@ public class BuffInventoryService {
             }
             group.add(item);
         }
+        inventorySnapshotStoreService.batchUpdateFloatPrices(snapshotId, floorWrites);
 
-        // 2) 每组一次挂单查询，组内所有件回填同一价；限流即停（已回填的保留，下次续跑）。
+        // 2) 每组一次挂单查询，组内所有件批量回填同一价；限流或连续失败即停（已回填的保留，下次续跑）。
         int queries = 0;
         int groupIndex = 0;
+        int consecutiveFailures = 0;
         for (java.util.Map.Entry<String, java.util.List<BuffItem>> entry : groups.entrySet()) {
             java.util.List<BuffItem> group = entry.getValue();
             groupIndex++;
@@ -334,28 +350,46 @@ public class BuffInventoryService {
             try {
                 queries++;
                 Double lowest = buffApiClient.fetchLowestSellOrderPrice(buffProperties.getBaseUrl(), cookie, game, sample.getGoodsId().trim(), queryRange[0], queryRange[1]);
-                // 区间内无挂单（此段 float 稀少）时保守回填档价，避免下次重复查询。
-                double value = (lowest != null && lowest.doubleValue() > 0.0d) ? lowest.doubleValue() : sample.getPrice();
+                // 区间内无挂单（此段 float 稀少）时保守回填 catalog 档价，避免下次重复查询。
+                double value = (lowest != null && lowest.doubleValue() > 0.0d) ? lowest.doubleValue() : floorPriceOf(sample, catalogPrices);
+                java.util.Map<String, Double> groupWrites = new java.util.LinkedHashMap<String, Double>();
                 for (BuffItem item : group) {
-                    inventorySnapshotStoreService.updateFloatPrice(snapshotId, item.getAssetId(), value);
+                    groupWrites.put(item.getAssetId(), Double.valueOf(value));
                     refined++;
                     appendRow(rowsOut, item, Double.valueOf(value));
                 }
+                inventorySnapshotStoreService.batchUpdateFloatPrices(snapshotId, groupWrites);
+                consecutiveFailures = 0;
             } catch (BuffRateLimitException ex) {
                 rateLimited = true;
                 break;
             } catch (Exception ex) {
                 log.warn("Refine float price failed, goodsId={}, reason={}", sample.getGoodsId(), ex.getMessage());
                 skipped += group.size();
+                consecutiveFailures++;
+                if (consecutiveFailures >= 5) {
+                    // 连续失败通常是会话失效等系统性问题：中止本轮，外层刷新会话后续跑，避免烧穿全部组。
+                    log.warn("Refine aborted after {} consecutive failures, snapshotId={}", Integer.valueOf(consecutiveFailures), Long.valueOf(snapshotId));
+                    break;
+                }
             }
-            try {
-                Thread.sleep(interval);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                break;
+            // 组间节流；最后一组（或预算已尽）不再空等。
+            if (groupIndex < groups.size() && queries < maxQueries) {
+                try {
+                    Thread.sleep(interval);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         }
         return new int[] {refined, skipped, rateLimited ? 1 : 0, queries};
+    }
+
+    // 该件的档地板价：优先 catalog 档价（与展示 basePrice 同源），无 catalog 行回退库存快照价。
+    private static double floorPriceOf(BuffItem item, java.util.Map<String, Double> catalogPrices) {
+        Double catalogPrice = catalogPrices.get(item.getGoodsId() == null ? null : item.getGoodsId().trim());
+        return catalogPrice != null && catalogPrice.doubleValue() > 0.0d ? catalogPrice.doubleValue() : item.getPrice();
     }
 
     private static void appendRow(java.util.List<java.util.Map<String, Object>> rowsOut, BuffItem item, Double value) {
@@ -401,7 +435,16 @@ public class BuffInventoryService {
     private void backgroundRefineLoop(long accountId, long snapshotId, String cookie) {
         BuffProperties.FloatRefine cfg = buffProperties.getFloatRefine();
         int cooldowns = 0;
+        // 皮肤范围与 catalog 档价整个循环缓存一份，避免每轮全表重载。
+        java.util.Map<String, double[]> skinRanges = skinFloatRangeService.nameToRange();
+        java.util.Map<String, Double> catalogPrices = catalogService.goodsIdToPrice();
         while (true) {
+            // 每轮刷新会话：循环可跨数十分钟冷却，拉取时的 cookie 可能已失效。
+            try {
+                cookie = buffSessionService.resolveCookie(accountId, null);
+            } catch (Exception ex) {
+                log.warn("Refresh cookie for background refine failed, keep previous one: {}", ex.getMessage());
+            }
             List<BuffItem> pending = new java.util.ArrayList<BuffItem>();
             for (BuffItem item : inventorySnapshotStoreService.loadItems(snapshotId)) {
                 if (item.getFloatPrice() == null && item.getPrice() >= cfg.getMinPrice()) {
@@ -418,7 +461,7 @@ public class BuffInventoryService {
                     return Double.compare(right.getPrice(), left.getPrice());
                 }
             });
-            int[] result = refineItemsGrouped(snapshotId, cookie, pending, null, null, Math.max(1, cfg.getMaxPerFetch()));
+            int[] result = refineItemsGrouped(snapshotId, cookie, pending, null, null, Math.max(1, cfg.getMaxPerFetch()), skinRanges, catalogPrices);
             log.info("Background refine round, accountId={}, snapshotId={}, pending={}, refined={}, skipped={}, queries={}, rateLimited={}, cooldowns={}",
                 Long.valueOf(accountId), Long.valueOf(snapshotId), Integer.valueOf(pending.size()), Integer.valueOf(result[0]),
                 Integer.valueOf(result[1]), Integer.valueOf(result[3]), Boolean.valueOf(result[2] == 1), Integer.valueOf(cooldowns));

@@ -29,5 +29,7 @@ public interface CatalogSkinMapper extends BaseMapper<CatalogSkin> {
 
     List<CatalogSkin> selectNameCollections();
 
+    List<CatalogSkin> selectGoodsPrices();
+
     List<String> selectSkinNamesByCollectionAndRarity(@Param("collection") String collection, @Param("rarity") String rarity);
 }

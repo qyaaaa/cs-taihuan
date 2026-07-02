@@ -68,29 +68,35 @@
         WHERE snapshot_id = #{snapshotId} AND asset_id = #{assetId}
     </update>
 
+    <!-- 一批件的精估价批量写回（单条 CASE 语句，替代逐件单行 UPDATE）。 -->
+    <update id="batchUpdateFloatPrice">
+        UPDATE inventory_item
+        SET float_price = CASE asset_id
+        <foreach collection="rows" item="r"> WHEN #{r.assetId} THEN #{r.floatPrice}</foreach>
+        END
+        WHERE snapshot_id = #{snapshotId}
+          AND asset_id IN
+        <foreach collection="rows" item="r" open="(" separator="," close=")">#{r.assetId}</foreach>
+    </update>
+
     <!-- 新快照按 asset_id 结转上一快照已精估的市值：同一件饰品 float 不变，精估价可直接沿用。 -->
     <update id="carryOverFloatPrices">
         UPDATE inventory_item n
-        JOIN inventory_item p
-          ON p.snapshot_id = #{prevSnapshotId}
-         AND p.asset_id = n.asset_id
-         AND p.float_price IS NOT NULL
-        SET n.float_price = p.float_price
+        SET n.float_price = (
+            SELECT t.float_price
+            FROM (SELECT asset_id, float_price
+                  FROM inventory_item
+                  WHERE snapshot_id = #{prevSnapshotId} AND float_price IS NOT NULL) t
+            WHERE t.asset_id = n.asset_id
+            LIMIT 1
+        )
         WHERE n.snapshot_id = #{snapshotId}
           AND n.float_price IS NULL
+          AND n.asset_id IN (
+              SELECT t2.asset_id
+              FROM (SELECT asset_id
+                    FROM inventory_item
+                    WHERE snapshot_id = #{prevSnapshotId} AND float_price IS NOT NULL) t2
+          )
     </update>
-
-    <!-- 还没精估价的武器件，按价格从高到低取前 N 件（贵的对 EV 影响大，优先精估）。 -->
-    <select id="selectAssetIdsMissingFloatPrice" resultType="string">
-        SELECT asset_id
-        FROM inventory_item
-        WHERE snapshot_id = #{snapshotId}
-          AND category_key LIKE 'weapon!_%' ESCAPE '!'
-          AND float_price IS NULL
-          AND float_value IS NOT NULL
-          AND goods_id IS NOT NULL AND goods_id != ''
-          AND price &gt;= #{minPrice}
-        ORDER BY price DESC, id ASC
-        LIMIT #{limit}
-    </select>
 </mapper>
