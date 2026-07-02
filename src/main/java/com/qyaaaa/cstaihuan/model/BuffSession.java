@@ -6,14 +6,14 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 @Data
-@TableName("inventory_snapshot")
-public class InventorySnapshotRecord {
+@TableName("buff_session")
+public class BuffSession {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long accountId;
-    private String game;
-    private Integer itemCount;
-    private String fingerprint;
-    private Long createdAt;
-    private Long lastSeenAt;
+    private String cookieText;
+    private String source;
+    private String createdAt;
+    private String updatedAt;
+    private String lastValidatedAt;
 }

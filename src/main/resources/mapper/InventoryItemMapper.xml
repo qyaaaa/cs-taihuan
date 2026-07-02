@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.InventoryItemMapper">
+    <sql id="weaponWhere">
+        snapshot_id = #{snapshotId}
+        AND category_key LIKE 'weapon!_%' ESCAPE '!'
+        <if test="rarity != null and rarity != ''">
+            AND filter_rarity = #{rarity}
+        </if>
+    </sql>
+
+    <sql id="itemColumns">
+        id, snapshot_id, asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name,
+        collection_name AS collection, rarity, category_key, filter_rarity, quality_label, tradable, raw_json
+    </sql>
+
+    <select id="selectWeaponItems" resultType="com.qyaaaa.cstaihuan.model.InventoryItem">
+        SELECT <include refid="itemColumns"/>
+        FROM inventory_item
+        WHERE snapshot_id = #{snapshotId}
+          AND category_key LIKE 'weapon!_%' ESCAPE '!'
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectPagedWeaponItems" resultType="com.qyaaaa.cstaihuan.model.InventoryItem">
+        SELECT <include refid="itemColumns"/>
+        FROM inventory_item
+        WHERE <include refid="weaponWhere"/>
+        ORDER BY price DESC, id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countWeaponItems" resultType="int">
+        SELECT COUNT(*)
+        FROM inventory_item
+        WHERE <include refid="weaponWhere"/>
+    </select>
+
+    <select id="summarizeWeaponItems" resultType="com.qyaaaa.cstaihuan.model.InventorySnapshotSummary">
+        SELECT COUNT(*) AS item_count,
+               SUM(CASE WHEN tradable = 1 THEN 1 ELSE 0 END) AS tradable_count,
+               SUM(CASE WHEN float_value IS NOT NULL THEN 1 ELSE 0 END) AS with_float_count,
+               COALESCE(SUM(price), 0) AS total_cost
+        FROM inventory_item
+        WHERE <include refid="weaponWhere"/>
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO inventory_item (
+            snapshot_id, asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name,
+            collection_name, rarity, category_key, filter_rarity, quality_label, tradable, raw_json
+        )
+        VALUES
+        <foreach collection="items" item="item" separator=",">
+            (
+                #{item.snapshotId}, #{item.assetId}, #{item.goodsId}, #{item.name}, #{item.price},
+                #{item.floatValue}, #{item.floatValueRaw}, #{item.imageUrl}, #{item.wearName},
+                #{item.collection}, #{item.rarity}, #{item.categoryKey}, #{item.filterRarity},
+                #{item.qualityLabel}, #{item.tradable}, #{item.rawJson}
+            )
+        </foreach>
+    </insert>
+</mapper>

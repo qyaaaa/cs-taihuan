@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.TradeUpNextTierItemMapper">
+    <insert id="insertBatch">
+        INSERT INTO trade_up_next_tier_item (
+            account_id, snapshot_id, collection_name, base_rarity, target_rarity, inventory_count,
+            skin_name, skin_price, min_float, max_float, created_at
+        )
+        VALUES
+        <foreach collection="items" item="item" separator=",">
+            (
+                #{item.accountId}, #{item.snapshotId}, #{item.collection}, #{item.baseRarity}, #{item.targetRarity},
+                #{item.inventoryCount}, #{item.skinName}, #{item.skinPrice}, #{item.minFloat}, #{item.maxFloat}, #{item.createdAt}
+            )
+        </foreach>
+    </insert>
+</mapper>

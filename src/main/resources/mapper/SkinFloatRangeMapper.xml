@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.SkinFloatRangeMapper">
+    <sql id="rangeColumns">
+        id AS row_id, skin_id, paint_index, name_en, name_zh, base_name_en, base_name_zh,
+        weapon, rarity, min_float, max_float, collection_en, collection_zh, image_url AS image,
+        source, updated_at
+    </sql>
+
+    <delete id="deleteAll">
+        DELETE FROM skin_float_range
+    </delete>
+
+    <select id="selectSkinIds" resultType="string">
+        SELECT skin_id
+        FROM skin_float_range
+    </select>
+
+    <select id="selectMissingImageSkinIds" resultType="string">
+        SELECT skin_id
+        FROM skin_float_range
+        WHERE image_url IS NULL
+           OR image_url = ''
+    </select>
+
+    <!-- 按 skin_id 一次补多行图标；只更新仍缺图的行，重复执行无副作用。 -->
+    <update id="updateImagesBySkinId">
+        UPDATE skin_float_range
+        SET image_url = CASE skin_id
+        <foreach collection="rows" item="row" separator=" ">
+            WHEN #{row.skinId} THEN #{row.image}
+        </foreach>
+        END
+        WHERE skin_id IN
+        <foreach collection="rows" item="row" open="(" separator="," close=")">
+            #{row.skinId}
+        </foreach>
+          AND (image_url IS NULL OR image_url = '')
+    </update>
+
+    <insert id="insertBatch">
+        INSERT INTO skin_float_range (
+            skin_id, paint_index, name_en, name_zh, base_name_en, base_name_zh,
+            weapon, rarity, min_float, max_float, collection_en, collection_zh,
+            image_url, source, updated_at
+        )
+        VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (
+                #{row.skinId}, #{row.paintIndex}, #{row.nameEn}, #{row.nameZh}, #{row.baseNameEn}, #{row.baseNameZh},
+                #{row.weapon}, #{row.rarity}, #{row.minFloat}, #{row.maxFloat}, #{row.collectionEn}, #{row.collectionZh},
+                #{row.image}, #{row.source}, #{row.updatedAt}
+            )
+        </foreach>
+    </insert>
+
+    <select id="selectByBaseName" resultType="com.qyaaaa.cstaihuan.model.SkinFloatRange">
+        SELECT <include refid="rangeColumns"/>
+        FROM skin_float_range
+        WHERE base_name_en = #{key}
+           OR base_name_zh = #{key}
+        LIMIT 1
+    </select>
+
+    <select id="search" resultType="com.qyaaaa.cstaihuan.model.SkinFloatRange">
+        SELECT <include refid="rangeColumns"/>
+        FROM skin_float_range
+        WHERE 1 = 1
+        <if test="collection != null and collection != ''">
+            AND (collection_zh LIKE CONCAT('%', #{collection}, '%')
+                 OR collection_en LIKE CONCAT('%', #{collection}, '%'))
+        </if>
+        <if test="name != null and name != ''">
+            AND (name_zh LIKE CONCAT('%', #{name}, '%')
+                 OR name_en LIKE CONCAT('%', #{name}, '%'))
+        </if>
+        <if test="rarity != null and rarity != ''">
+            AND rarity = #{rarity}
+        </if>
+        ORDER BY name_en ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectNameRanges" resultType="com.qyaaaa.cstaihuan.model.SkinFloatRange">
+        SELECT name_zh, min_float, max_float
+        FROM skin_float_range
+        WHERE name_zh IS NOT NULL
+          AND name_zh &lt;&gt; ''
+    </select>
+
+    <select id="selectSkinNamesByCollectionAndRarity" resultType="string">
+        SELECT DISTINCT name_zh
+        FROM skin_float_range
+        WHERE collection_zh = #{collectionZh}
+          AND rarity = #{rarity}
+          AND name_zh IS NOT NULL
+          AND name_zh &lt;&gt; ''
+    </select>
+
+    <select id="selectCollections" resultType="map">
+        SELECT DISTINCT collection_zh AS collectionZh,
+                        collection_en AS collectionEn
+        FROM skin_float_range
+        WHERE collection_zh IS NOT NULL
+           OR collection_en IS NOT NULL
+        ORDER BY collection_zh ASC
+    </select>
+
+    <select id="selectCollectionBrowserRows" resultType="com.qyaaaa.cstaihuan.model.SkinFloatRange">
+        SELECT <include refid="rangeColumns"/>
+        FROM skin_float_range
+        WHERE collection_zh IS NOT NULL
+           OR collection_en IS NOT NULL
+        ORDER BY collection_zh ASC, collection_en ASC, rarity ASC, name_en ASC
+    </select>
+</mapper>

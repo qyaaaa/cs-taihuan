@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.CatalogSkinMapper">
+    <sql id="catalogColumns">
+        id, name, goods_id, collection_name AS collection, rarity, category_key, quality_label,
+        min_float, max_float, price, image_url, created_at, updated_at
+    </sql>
+
+    <select id="selectAllOrdered" resultType="com.qyaaaa.cstaihuan.model.CatalogSkin">
+        SELECT <include refid="catalogColumns"/>
+        FROM catalog_skin
+        ORDER BY collection_name ASC, rarity ASC, name ASC
+    </select>
+
+    <select id="selectByGoodsId" resultType="com.qyaaaa.cstaihuan.model.CatalogSkin">
+        SELECT <include refid="catalogColumns"/>
+        FROM catalog_skin
+        WHERE goods_id = #{goodsId}
+        LIMIT 1
+    </select>
+
+    <select id="searchTargets" resultType="com.qyaaaa.cstaihuan.model.CatalogSkin">
+        SELECT <include refid="catalogColumns"/>
+        FROM catalog_skin
+        WHERE goods_id IS NOT NULL
+          AND goods_id &lt;&gt; ''
+        <if test="collection != null and collection != ''">
+            AND collection_name LIKE CONCAT('%', #{collection}, '%')
+        </if>
+        <if test="name != null and name != ''">
+            AND name LIKE CONCAT('%', #{name}, '%')
+        </if>
+        <if test="rarity != null and rarity != ''">
+            AND rarity = #{rarity}
+        </if>
+        ORDER BY price DESC, name ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchByKeyword" resultType="com.qyaaaa.cstaihuan.model.CatalogSkin">
+        SELECT <include refid="catalogColumns"/>
+        FROM catalog_skin
+        WHERE goods_id IS NOT NULL
+          AND goods_id &lt;&gt; ''
+        <choose>
+            <when test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%')
+                     OR goods_id LIKE CONCAT('%', #{keyword}, '%')
+                     OR collection_name LIKE CONCAT('%', #{keyword}, '%'))
+                ORDER BY price DESC, name ASC
+            </when>
+            <otherwise>
+                ORDER BY updated_at DESC, price DESC
+            </otherwise>
+        </choose>
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectExistingGoodsIds" resultType="string">
+        SELECT goods_id
+        FROM catalog_skin
+        WHERE goods_id IS NOT NULL
+          AND goods_id &lt;&gt; ''
+    </select>
+
+    <select id="selectFreshGoodsIds" resultType="string">
+        SELECT goods_id
+        FROM catalog_skin
+        WHERE goods_id IS NOT NULL
+          AND goods_id &lt;&gt; ''
+          AND updated_at &gt;= #{freshAfterTimestamp}
+    </select>
+
+    <select id="selectIncompleteSkinAnchors" resultType="map">
+        SELECT MIN(goods_id) AS anchor,
+               MAX(collection_name) AS collection_name
+        FROM catalog_skin
+        WHERE goods_id IS NOT NULL
+          AND goods_id &lt;&gt; ''
+          AND name NOT LIKE '%纪念品%'
+          AND name NOT LIKE '%Souvenir%'
+        GROUP BY REGEXP_REPLACE(name, ' \\([^)]*\\)$', '')
+        HAVING COUNT(*) &lt; 5
+           AND MAX(updated_at) &lt; #{freshAfterTimestamp}
+        ORDER BY MAX(updated_at) ASC
+        LIMIT #{limit}
+    </select>
+
+    <delete id="deleteAll">
+        DELETE FROM catalog_skin
+    </delete>
+
+    <insert id="insertBatch">
+        INSERT INTO catalog_skin (
+            name, goods_id, collection_name, rarity, category_key, quality_label,
+            min_float, max_float, price, image_url, created_at, updated_at
+        )
+        VALUES
+        <foreach collection="items" item="item" separator=",">
+            (
+                #{item.name}, #{item.goodsId}, #{item.collection}, #{item.rarity}, #{item.categoryKey}, #{item.qualityLabel},
+                #{item.minFloat}, #{item.maxFloat}, #{item.price}, #{item.imageUrl}, #{item.createdAt}, #{item.updatedAt}
+            )
+        </foreach>
+    </insert>
+
+    <insert id="upsertBatch">
+        INSERT INTO catalog_skin (
+            name, goods_id, collection_name, rarity, category_key, quality_label,
+            min_float, max_float, price, image_url, created_at, updated_at
+        )
+        VALUES
+        <foreach collection="items" item="item" separator=",">
+            (
+                #{item.name}, #{item.goodsId}, #{item.collection}, #{item.rarity}, #{item.categoryKey}, #{item.qualityLabel},
+                #{item.minFloat}, #{item.maxFloat}, #{item.price}, #{item.imageUrl}, #{item.createdAt}, #{item.updatedAt}
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            goods_id = VALUES(goods_id),
+            collection_name = VALUES(collection_name),
+            rarity = VALUES(rarity),
+            category_key = VALUES(category_key),
+            quality_label = VALUES(quality_label),
+            min_float = VALUES(min_float),
+            max_float = VALUES(max_float),
+            price = VALUES(price),
+            image_url = COALESCE(VALUES(image_url), image_url),
+            updated_at = VALUES(updated_at)
+    </insert>
+
+    <select id="selectNameCollections" resultType="com.qyaaaa.cstaihuan.model.CatalogSkin">
+        SELECT name, collection_name AS collection
+        FROM catalog_skin
+        WHERE name IS NOT NULL
+          AND collection_name IS NOT NULL
+    </select>
+
+    <select id="selectSkinNamesByCollectionAndRarity" resultType="string">
+        SELECT name
+        FROM catalog_skin
+        WHERE collection_name = #{collection}
+          AND rarity = #{rarity}
+    </select>
+</mapper>

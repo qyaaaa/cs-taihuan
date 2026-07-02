@@ -1,5 +1,10 @@
 package com.qyaaaa.cstaihuan.model;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -8,10 +13,15 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
+@TableName("catalog_skin")
 public class CatalogSkin {
+    @JsonIgnore
+    @TableId(type = IdType.AUTO)
+    private Long id;
     private String name;
     @JsonProperty("goods_id")
     private String goodsId;
+    @TableField("collection_name")
     private String collection;
     private String rarity;
     @JsonProperty("category_key")
@@ -25,6 +35,10 @@ public class CatalogSkin {
     private double price;
     @JsonProperty("image_url")
     private String imageUrl;
+    @JsonIgnore
+    private Long createdAt;
+    @JsonIgnore
+    private Long updatedAt;
 
     public CatalogSkin(String name, String collection, String rarity, double minFloat, double maxFloat, double price) {
         this.name = name;
