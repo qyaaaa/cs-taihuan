@@ -134,6 +134,21 @@ public class InventorySnapshotStoreServiceImpl extends ServiceImpl<InventorySnap
         updateById(record);
     }
 
+    @Override
+    public int updateFloatPrice(long snapshotId, String assetId, double floatPrice) {
+        return inventoryItemMapper.updateFloatPrice(snapshotId, assetId, java.math.BigDecimal.valueOf(floatPrice));
+    }
+
+    @Override
+    public int carryOverFloatPrices(long snapshotId, long prevSnapshotId) {
+        return inventoryItemMapper.carryOverFloatPrices(snapshotId, prevSnapshotId);
+    }
+
+    @Override
+    public List<String> listAssetIdsMissingFloatPrice(long snapshotId, double minPrice, int limit) {
+        return inventoryItemMapper.selectAssetIdsMissingFloatPrice(snapshotId, minPrice, limit);
+    }
+
     private List<BuffItem> toBuffItems(List<InventoryItem> rows) {
         List<BuffItem> items = new ArrayList<BuffItem>();
         for (InventoryItem row : rows) {
@@ -148,6 +163,7 @@ public class InventorySnapshotStoreServiceImpl extends ServiceImpl<InventorySnap
         item.setGoodsId(row.getGoodsId());
         item.setName(row.getName());
         item.setPrice(row.getPrice() == null ? 0D : row.getPrice().doubleValue());
+        item.setFloatPrice(row.getFloatPrice() == null ? null : Double.valueOf(row.getFloatPrice().doubleValue()));
         item.setFloatValue(row.getFloatValue());
         item.setFloatValueRaw(row.getFloatValueRaw());
         item.setImageUrl(row.getImageUrl());
@@ -177,6 +193,7 @@ public class InventorySnapshotStoreServiceImpl extends ServiceImpl<InventorySnap
         row.setGoodsId(item.getGoodsId());
         row.setName(item.getName());
         row.setPrice(BigDecimal.valueOf(item.getPrice()));
+        row.setFloatPrice(item.getFloatPrice() == null ? null : BigDecimal.valueOf(item.getFloatPrice().doubleValue()));
         row.setFloatValue(item.getFloatValue());
         row.setFloatValueRaw(item.getFloatValueRaw());
         row.setImageUrl(item.getImageUrl());

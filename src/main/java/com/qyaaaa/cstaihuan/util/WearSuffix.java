@@ -80,6 +80,45 @@ public final class WearSuffix {
         return new double[] {min, max};
     }
 
+    // BUFF 各磨损档的固定子区间切点（实测归纳自 goods/info 的 paintwear_choices）：
+    // 崭新 {0.01,0.02,0.03,0.04}、略磨 {0.08,0.09,0.10,0.11}、久经 {0.18,0.21,0.24,0.27}、
+    // 破损 {0.39,0.40,0.41,0.42}、战痕 {0.50,0.63,0.76,0.90}。
+    // 特殊皮肤（自身 min/max float 受限，如头骨粉碎者久经=0.25-0.38）由“皮肤实际范围裁剪切点”自然得出，
+    // 与 BUFF 动态返回的 choices 完全一致。
+    private static final double[][] TIER_CUT_POINTS = new double[][] {
+        {0.01d, 0.02d, 0.03d, 0.04d},
+        {0.08d, 0.09d, 0.10d, 0.11d},
+        {0.18d, 0.21d, 0.24d, 0.27d},
+        {0.39d, 0.40d, 0.41d, 0.42d},
+        {0.50d, 0.63d, 0.76d, 0.90d},
+    };
+
+    /**
+     * 复刻 BUFF 的 paintwear_choices：按名字的磨损档取固定切点，再用皮肤实际 float 范围裁剪。
+     * 返回该档的子区间列表 [[lo,hi]...]，最后一段即“底价段”。skinMin/skinMax 传 null 表示无限制。
+     */
+    public static double[][] buffPaintwearSegments(String name, Double skinMin, Double skinMax) {
+        int tier = wearTierOfName(name);
+        double[] range = standardWearRange(name);
+        double lo = Math.max(range[0], skinMin == null ? 0.0d : skinMin.doubleValue());
+        double hi = Math.min(range[1], skinMax == null ? 1.0d : skinMax.doubleValue());
+        if (hi <= lo) {
+            return new double[][] {{range[0], range[1]}};
+        }
+        java.util.List<double[]> segments = new java.util.ArrayList<double[]>();
+        double cursor = lo;
+        if (tier >= 0 && tier < TIER_CUT_POINTS.length) {
+            for (double cut : TIER_CUT_POINTS[tier]) {
+                if (cut > lo && cut < hi) {
+                    segments.add(new double[] {cursor, cut});
+                    cursor = cut;
+                }
+            }
+        }
+        segments.add(new double[] {cursor, hi});
+        return segments.toArray(new double[segments.size()][]);
+    }
+
     /** 去掉尾部磨损外观后缀（例如 " (Field-Tested)" / " (久经沙场)"）。 */
     public static String stripWearSuffix(String name) {
         if (name == null) {

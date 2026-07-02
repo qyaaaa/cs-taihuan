@@ -167,11 +167,20 @@ public final class TradeUpOptimizer {
         for (BuffItem item : items) {
             CatalogSkin skin = catalogByName.get(item.getName());
             // 素材按自身磨损档目录价计价；库存价是整皮 sell_min_price，会低估低磨素材的 EV 成本。
-            double wearPrice = wearTierInputPrice(item);
+            // 有精估价（该件 float 的挂单底价）时按精估价计；档底价同时保留在 basePrice 供前端对照展示。
+            double tierPrice = tierFloorPrice(item);
+            double wearPrice = item.getFloatPrice() != null && item.getFloatPrice().doubleValue() > 0.0d
+                ? item.getFloatPrice().doubleValue()
+                : tierPrice;
+            BuffItem copy = null;
             if (skin != null) {
-                enriched.add(item.withCatalog(skin, wearPrice));
+                copy = item.withCatalog(skin, wearPrice);
             } else if (item.getCollection() != null && item.getFilterRarity() != null) {
-                enriched.add(item.withPrice(wearPrice));
+                copy = item.withPrice(wearPrice);
+            }
+            if (copy != null) {
+                copy.setBasePrice(Double.valueOf(tierPrice));
+                enriched.add(copy);
             }
         }
         return enriched;
@@ -179,7 +188,7 @@ public final class TradeUpOptimizer {
 
     // 解析投入素材自身磨损档对应的目录价：先精确匹配带磨损后缀名称，再匹配同基础皮肤中与素材磨损档一致的变体，
     // 最后回退到库存价，确保缺少目录行时不会算崩 EV。
-    private double wearTierInputPrice(BuffItem item) {
+    private double tierFloorPrice(BuffItem item) {
         CatalogSkin exact = catalogByName.get(item.getName());
         if (exact != null && exact.getPrice() > 0.0d) {
             return exact.getPrice();

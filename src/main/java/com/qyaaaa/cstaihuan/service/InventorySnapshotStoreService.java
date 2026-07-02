@@ -35,4 +35,13 @@ public interface InventorySnapshotStoreService extends IService<InventorySnapsho
     InventorySnapshotRecord saveSnapshot(long accountId, String game, String fingerprint, List<BuffItem> items);
 
     void touch(long snapshotId);
+
+    /** 按磨损精估后写回该件市值；返回受影响行数。 */
+    int updateFloatPrice(long snapshotId, String assetId, double floatPrice);
+
+    /** 新快照按 asset_id 结转上一快照的精估价；返回结转行数。 */
+    int carryOverFloatPrices(long snapshotId, long prevSnapshotId);
+
+    /** 还没精估价的武器件 asset_id，按价格从高到低取前 N 件。 */
+    List<String> listAssetIdsMissingFloatPrice(long snapshotId, double minPrice, int limit);
 }

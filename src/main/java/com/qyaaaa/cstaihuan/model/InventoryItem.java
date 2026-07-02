@@ -17,6 +17,8 @@ public class InventoryItem {
     private String goodsId;
     private String name;
     private BigDecimal price;
+    // 按磨损精估的市值（该件 float 对应的挂单最低价）；空表示未精估、回退磨损档价。
+    private BigDecimal floatPrice;
     private Double floatValue;
     private String floatValueRaw;
     private String imageUrl;

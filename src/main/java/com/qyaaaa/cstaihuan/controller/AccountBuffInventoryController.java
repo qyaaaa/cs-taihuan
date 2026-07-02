@@ -5,8 +5,10 @@ import com.qyaaaa.cstaihuan.dto.FetchInventoryRequest;
 import com.qyaaaa.cstaihuan.dto.InventoryPageRequest;
 import com.qyaaaa.cstaihuan.dto.InventoryPageResponse;
 import com.qyaaaa.cstaihuan.dto.InventorySnapshotResponse;
+import com.qyaaaa.cstaihuan.dto.RefineFloatPricesRequest;
 import com.qyaaaa.cstaihuan.service.AsyncTaskService;
 import com.qyaaaa.cstaihuan.service.BuffInventoryService;
+import java.util.Map;
 import javax.validation.Valid;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -53,5 +55,11 @@ public class AccountBuffInventoryController {
     @PostMapping("/fetch")
     public InventorySnapshotResponse fetch(@PathVariable long accountId, @Valid @RequestBody FetchInventoryRequest request) throws Exception {
         return buffInventoryService.fetchAndSave(accountId, request);
+    }
+
+    // 按磨损精估指定库存件的市值（每件查一次 BUFF 挂单最低价，写回 float_price；档内低磨损有溢价）。
+    @PostMapping("/refine-float-prices")
+    public Map<String, Object> refineFloatPrices(@PathVariable long accountId, @Valid @RequestBody RefineFloatPricesRequest request) {
+        return buffInventoryService.refineFloatPrices(accountId, request.getAssetIds());
     }
 }

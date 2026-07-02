@@ -16,4 +16,10 @@ public interface InventoryItemMapper extends BaseMapper<InventoryItem> {
     InventorySnapshotSummary summarizeWeaponItems(@Param("snapshotId") long snapshotId, @Param("rarity") String rarity);
 
     int insertBatch(@Param("items") List<InventoryItem> items);
+
+    int updateFloatPrice(@Param("snapshotId") long snapshotId, @Param("assetId") String assetId, @Param("floatPrice") java.math.BigDecimal floatPrice);
+
+    int carryOverFloatPrices(@Param("snapshotId") long snapshotId, @Param("prevSnapshotId") long prevSnapshotId);
+
+    List<String> selectAssetIdsMissingFloatPrice(@Param("snapshotId") long snapshotId, @Param("minPrice") double minPrice, @Param("limit") int limit);
 }

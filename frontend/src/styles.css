@@ -2269,3 +2269,9 @@ button:focus-visible,
     white-space: normal;
   }
 }
+
+/* 材料两价展示：底价(档地板价)作为对照，弱化显示 */
+.base-price-note {
+  color: #8f9aaa;
+  font-size: 11px;
+}
