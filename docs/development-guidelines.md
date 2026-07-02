@@ -29,34 +29,44 @@
   - 精细价格档和特殊价格因子
 - 预期结果应落到 fixture 中，便于人工核对和后续回归。
 
-## 4. 目录同步
+## 4. 后端持久化分层
+
+- 实体层统一放在 `model`，数据库表实体需要标注 `@TableName`，主键使用 `@TableId`。
+- 数据访问层统一放在 `mapper`，接口继承 MyBatis-Plus `BaseMapper`。
+- 复杂 SQL 统一放在 `src/main/resources/mapper/*Mapper.xml`，不要散落在业务服务里拼 SQL。
+- 服务层统一拆成 `service` 接口和 `service.impl` 实现类，实现类继承 MyBatis-Plus `ServiceImpl`。
+- 简单 CRUD 优先使用 `save`、`getById`、`updateById`、`removeById`、`LambdaQueryWrapper` 等 MyBatis-Plus 能力。
+- 新增或迁移存储服务时，不再直接注入 `JdbcTemplate`；确实需要批量或复杂查询时，应先抽到 mapper 方法和 XML。
+- mapper XML 中的字段别名要与 Java 字段保持一致，尤其是数据库保留字或历史字段名，例如 `collection_name AS collection`。
+
+## 5. 目录同步
 
 - 目录同步默认由后端定时任务温和补齐，前端按钮是立即兜底触发。
 - 定时任务和手动任务必须共用服务级互斥锁，避免同时请求 BUFF 详情接口。
 - 同步逻辑必须尊重 `cache-fresh-millis`，近期已获取的 goods 不重复请求。
 - BUFF 请求间隔不要低于配置保护值，避免触发限流。
 
-## 5. 前端交互
+## 6. 前端交互
 
 - 长任务页面必须有 loading 状态，避免空态和旧数据闪烁。
 - 库存、方案、目录同步、会话校验都应通过页面级或组件级 loading 明确反馈。
 - UI 保持 BUFF 暗色工作台风格，主色以蓝紫为主，收益和价格点缀可使用金色。
 - 图标资源放在 `frontend/public/`，入口 favicon 在 `frontend/index.html` 维护。
 
-## 6. 数据安全
+## 7. 数据安全
 
 - `data/` 下的 Cookie、库存 JSON、临时输出不得提交到 Git。
 - Cookie 只在本机保存，保存文件需要尽量限制为当前用户可读写。
 - 文档和测试 fixture 不允许包含真实 Cookie、Steam ID、BUFF 账号、真实库存截图等敏感信息。
 
-## 7. 多账号隔离
+## 8. 多账号隔离
 
 - Cookie、会话状态、库存快照、目录同步任务、方案生成结果必须按 `account_id` 隔离。
 - `catalog_skin` 是全局市场目录，不加 `account_id`，不同账号共享同一份商品和价格数据。
 - 新增账号接口时应保留旧接口兼容，旧接口内部走默认账号，避免前端灰度期间中断。
 - 前端切换账号后必须刷新会话、库存和方案状态，不能继续展示上一个账号的数据。
 
-## 8. 提交前检查
+## 9. 提交前检查
 
 - 前端改动至少运行 `npm run build`。
 - Java 改动至少运行 `mvn test`；如果本机没有 Maven，需要在交付说明里明确写出未运行原因。

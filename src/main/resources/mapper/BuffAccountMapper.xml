@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.BuffAccountMapper">
+    <select id="selectFirst" resultType="com.qyaaaa.cstaihuan.model.BuffAccount">
+        SELECT id, nickname, buff_user_id, masked_cookie, status, last_validated_at, created_at, updated_at
+        FROM buff_account
+        ORDER BY id ASC
+        LIMIT 1
+    </select>
+
+    <select id="selectOtherByBuffUserId" resultType="com.qyaaaa.cstaihuan.model.BuffAccount">
+        SELECT id, nickname, buff_user_id, masked_cookie, status, last_validated_at, created_at, updated_at
+        FROM buff_account
+        WHERE buff_user_id = #{buffUserId}
+          AND id != #{excludeAccountId}
+        ORDER BY id ASC
+        LIMIT 1
+    </select>
+
+    <delete id="deleteInventorySnapshotsByAccountId">
+        DELETE FROM inventory_snapshot
+        WHERE account_id = #{accountId}
+    </delete>
+
+    <delete id="deleteTradeUpNextTierItemsByAccountId">
+        DELETE FROM trade_up_next_tier_item
+        WHERE account_id = #{accountId}
+    </delete>
+</mapper>

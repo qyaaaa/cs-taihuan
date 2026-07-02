@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.CatalogSyncTaskMapper">
+    <insert id="enqueue" parameterType="com.qyaaaa.cstaihuan.model.CatalogSyncTaskRecord">
+        INSERT INTO catalog_sync_task (account_id, snapshot_id, goods_id, collection_name, status, retry_count, created_at, updated_at)
+        VALUES (#{accountId}, #{snapshotId}, #{goodsId}, #{collection}, #{status}, #{retryCount}, #{createdAt}, #{updatedAt})
+        ON DUPLICATE KEY UPDATE
+            collection_name = COALESCE(NULLIF(VALUES(collection_name), ''), collection_name),
+            status = CASE WHEN status = 'PROCESSING' THEN status ELSE 'PENDING' END,
+            failure_reason = NULL,
+            updated_at = VALUES(updated_at)
+    </insert>
+
+    <select id="selectClaimable" resultType="com.qyaaaa.cstaihuan.model.CatalogSyncTaskRecord">
+        SELECT id, account_id, snapshot_id, goods_id, collection_name AS collection, status, failure_reason, retry_count,
+               last_attempt_at, created_at, updated_at
+        FROM catalog_sync_task
+        WHERE snapshot_id = #{snapshotId}
+          AND (status = #{pendingStatus} OR (status = #{failedStatus} AND retry_count &lt; #{maxRetryCount}))
+        ORDER BY id ASC
+        LIMIT 1
+    </select>
+
+    <update id="markClaimed">
+        UPDATE catalog_sync_task
+        SET status = #{processingStatus},
+            failure_reason = NULL,
+            retry_count = retry_count + 1,
+            last_attempt_at = #{now},
+            updated_at = #{now}
+        WHERE id = #{id}
+          AND status IN (#{pendingStatus}, #{failedStatus})
+    </update>
+
+    <update id="resetProcessing">
+        UPDATE catalog_sync_task
+        SET status = #{pendingStatus},
+            failure_reason = #{failureReason},
+            updated_at = #{now}
+        WHERE snapshot_id = #{snapshotId}
+          AND status = #{processingStatus}
+    </update>
+
+    <update id="markSucceeded">
+        UPDATE catalog_sync_task
+        SET status = #{succeededStatus},
+            failure_reason = NULL,
+            succeeded_once = 1,
+            updated_at = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE catalog_sync_task
+        SET status = #{status},
+            failure_reason = #{failureReason},
+            updated_at = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*)
+        FROM catalog_sync_task
+        WHERE snapshot_id = #{snapshotId}
+    </select>
+
+    <select id="countOpen" resultType="int">
+        SELECT COUNT(*)
+        FROM catalog_sync_task
+        WHERE snapshot_id = #{snapshotId}
+          AND (status IN (#{pendingStatus}, #{processingStatus})
+               OR (status = #{failedStatus} AND retry_count &lt; #{maxRetryCount}))
+    </select>
+
+    <select id="countNeverSucceededOpen" resultType="int">
+        SELECT COUNT(*)
+        FROM catalog_sync_task
+        WHERE snapshot_id = #{snapshotId}
+          AND succeeded_once = 0
+          AND (status IN (#{pendingStatus}, #{processingStatus})
+               OR (status = #{failedStatus} AND retry_count &lt; #{maxRetryCount}))
+    </select>
+
+    <select id="countBySnapshotAndStatus" resultType="int">
+        SELECT COUNT(*)
+        FROM catalog_sync_task
+        WHERE snapshot_id = #{snapshotId}
+          AND status = #{status}
+    </select>
+
+    <select id="selectRecentlyCompletedGoodsIds" resultType="string">
+        SELECT goods_id
+        FROM catalog_sync_task
+        WHERE snapshot_id = #{snapshotId}
+          AND status IN (#{succeededStatus}, #{skippedStatus})
+          AND last_attempt_at IS NOT NULL
+          AND last_attempt_at &gt;= #{attemptedAfter}
+    </select>
+</mapper>

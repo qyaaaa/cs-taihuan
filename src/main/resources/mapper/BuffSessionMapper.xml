@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.BuffSessionMapper">
+    <select id="selectByAccountId" resultType="com.qyaaaa.cstaihuan.model.BuffSession">
+        SELECT id, account_id, cookie_text, source, created_at, updated_at, last_validated_at
+        FROM buff_session
+        WHERE account_id = #{accountId}
+        LIMIT 1
+    </select>
+
+    <insert id="upsertSession" parameterType="com.qyaaaa.cstaihuan.model.BuffSession">
+        INSERT INTO buff_session (account_id, cookie_text, source, created_at, updated_at, last_validated_at)
+        VALUES (#{accountId}, #{cookieText}, #{source}, #{createdAt}, #{updatedAt}, #{lastValidatedAt})
+        ON DUPLICATE KEY UPDATE
+            cookie_text = VALUES(cookie_text),
+            source = VALUES(source),
+            updated_at = VALUES(updated_at),
+            last_validated_at = VALUES(last_validated_at)
+    </insert>
+
+    <delete id="deleteByAccountId">
+        DELETE FROM buff_session
+        WHERE account_id = #{accountId}
+    </delete>
+</mapper>

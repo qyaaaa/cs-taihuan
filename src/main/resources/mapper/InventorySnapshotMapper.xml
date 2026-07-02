@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qyaaaa.cstaihuan.mapper.InventorySnapshotMapper">
+    <select id="selectLatest" resultType="com.qyaaaa.cstaihuan.model.InventorySnapshotRecord">
+        SELECT id, account_id, game, item_count, fingerprint, created_at, last_seen_at
+        FROM inventory_snapshot
+        WHERE account_id = #{accountId}
+          AND game = #{game}
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectByAccountAndId" resultType="com.qyaaaa.cstaihuan.model.InventorySnapshotRecord">
+        SELECT id, account_id, game, item_count, fingerprint, created_at, last_seen_at
+        FROM inventory_snapshot
+        WHERE account_id = #{accountId}
+          AND id = #{snapshotId}
+    </select>
+</mapper>
