@@ -328,6 +328,38 @@ public class BuffApiClient {
         return request(url, cookie, baseUrl + "/market/csgo");
     }
 
+    /**
+     * 查询某 goods 在指定磨损区间内的最低挂单价（sell_order 支持 paintwear 过滤）。
+     * 用于按件精估材料市值：区间取 [该磨损档下限, 该件 float]，最低挂单即“同档不差于此件”的市场底价。
+     * 返回 null 表示区间内无挂单或解析失败（调用方回退档价）。
+     */
+    public Double fetchLowestSellOrderPrice(String baseUrl, String cookie, String game, String goodsId, double minPaintwear, double maxPaintwear) {
+        URI uri = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/goods/sell_order")
+            .queryParam("game", game)
+            .queryParam("goods_id", goodsId)
+            .queryParam("page_num", 1)
+            .queryParam("sort_by", "price.asc")
+            .queryParam("min_paintwear", String.valueOf(minPaintwear))
+            .queryParam("max_paintwear", String.valueOf(maxPaintwear))
+            .build()
+            .encode(StandardCharsets.UTF_8)
+            .toUri();
+        log.info("Fetching BUFF lowest sell order, goodsId={}, paintwear=[{}, {}]", goodsId, Double.valueOf(minPaintwear), Double.valueOf(maxPaintwear));
+        Map<String, Object> payload = requestUri(uri, cookie, baseUrl + "/goods/" + goodsId);
+        Map<String, Object> data = mapValue(payload.get("data"));
+        Object items = data.get("items");
+        if (items instanceof List) {
+            for (Object row : (List<?>) items) {
+                Map<String, Object> order = mapValue(row);
+                Double price = nullableDoubleValue(order, "price", "sell_min_price");
+                if (price != null && price.doubleValue() > 0.0d) {
+                    return price;
+                }
+            }
+        }
+        return null;
+    }
+
     // 按关键词搜索 BUFF 市场商品，返回匹配的 {goodsId, name} 行；用于给用户未拥有的收藏品皮肤补 goods_id 和产物价格。
     public List<Map<String, Object>> searchGoods(String baseUrl, String cookie, String game, String keyword, int pageNum) {
         URI uri = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/market/goods")

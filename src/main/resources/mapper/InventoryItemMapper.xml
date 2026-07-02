@@ -10,7 +10,7 @@
     </sql>
 
     <sql id="itemColumns">
-        id, snapshot_id, asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name,
+        id, snapshot_id, asset_id, goods_id, name, price, float_price, float_value, float_value_raw, image_url, wear_name,
         collection_name AS collection, rarity, category_key, filter_rarity, quality_label, tradable, raw_json
     </sql>
 
@@ -47,17 +47,50 @@
 
     <insert id="insertBatch">
         INSERT INTO inventory_item (
-            snapshot_id, asset_id, goods_id, name, price, float_value, float_value_raw, image_url, wear_name,
+            snapshot_id, asset_id, goods_id, name, price, float_price, float_value, float_value_raw, image_url, wear_name,
             collection_name, rarity, category_key, filter_rarity, quality_label, tradable, raw_json
         )
         VALUES
         <foreach collection="items" item="item" separator=",">
             (
-                #{item.snapshotId}, #{item.assetId}, #{item.goodsId}, #{item.name}, #{item.price},
+                #{item.snapshotId}, #{item.assetId}, #{item.goodsId}, #{item.name}, #{item.price}, #{item.floatPrice},
                 #{item.floatValue}, #{item.floatValueRaw}, #{item.imageUrl}, #{item.wearName},
                 #{item.collection}, #{item.rarity}, #{item.categoryKey}, #{item.filterRarity},
                 #{item.qualityLabel}, #{item.tradable}, #{item.rawJson}
             )
         </foreach>
     </insert>
+
+    <!-- 按磨损精估后写回该件的市值（float_price）。 -->
+    <update id="updateFloatPrice">
+        UPDATE inventory_item
+        SET float_price = #{floatPrice}
+        WHERE snapshot_id = #{snapshotId} AND asset_id = #{assetId}
+    </update>
+
+    <!-- 新快照按 asset_id 结转上一快照已精估的市值：同一件饰品 float 不变，精估价可直接沿用。 -->
+    <update id="carryOverFloatPrices">
+        UPDATE inventory_item n
+        JOIN inventory_item p
+          ON p.snapshot_id = #{prevSnapshotId}
+         AND p.asset_id = n.asset_id
+         AND p.float_price IS NOT NULL
+        SET n.float_price = p.float_price
+        WHERE n.snapshot_id = #{snapshotId}
+          AND n.float_price IS NULL
+    </update>
+
+    <!-- 还没精估价的武器件，按价格从高到低取前 N 件（贵的对 EV 影响大，优先精估）。 -->
+    <select id="selectAssetIdsMissingFloatPrice" resultType="string">
+        SELECT asset_id
+        FROM inventory_item
+        WHERE snapshot_id = #{snapshotId}
+          AND category_key LIKE 'weapon!_%' ESCAPE '!'
+          AND float_price IS NULL
+          AND float_value IS NOT NULL
+          AND goods_id IS NOT NULL AND goods_id != ''
+          AND price &gt;= #{minPrice}
+        ORDER BY price DESC, id ASC
+        LIMIT #{limit}
+    </select>
 </mapper>

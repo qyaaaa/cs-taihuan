@@ -30,12 +30,26 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  loadingRefine: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-defineEmits(['select-plan', 'update-filter', 'backfill-collection'])
+defineEmits(['select-plan', 'update-filter', 'backfill-collection', 'refine-prices'])
 
 // 方案涉及的所有收藏品（混合合同可能跨多个）；用于定向补全这些收藏品缺失的产物档皮肤。
 const planCollections = (plan) => [...new Set((plan?.inputs || []).map((item) => item?.collection).filter(Boolean))]
+
+// 方案输入材料的 asset_id 列表；用于按磨损精估这些材料的市值。
+const planAssetIds = (plan) => [...new Set((plan?.inputs || []).map((item) => item?.assetId || item?.asset_id).filter(Boolean))]
+
+// 材料计价（精估磨损价）明显高于档底价时，同时展示底价供对照。
+const hasFloatPremium = (item) => {
+  const base = Number(item?.basePrice ?? item?.base_price)
+  const price = Number(item?.price)
+  return Number.isFinite(base) && base > 0 && Number.isFinite(price) && Math.abs(price - base) > 0.005
+}
 
 const detailPanel = ref(null)
 const planListMaxHeight = ref('')
@@ -302,6 +316,14 @@ const contractTitle = (rarity) => {
           >
             {{ loadingBackfill ? '补全中…（搜 BUFF 抓缺价皮肤）' : '产物不全？补全该方案收藏品产物' }}
           </button>
+          <button
+            type="button"
+            class="inline-link-button"
+            :disabled="loadingRefine || !planAssetIds(selectedPlan).length"
+            @click="$emit('refine-prices', planAssetIds(selectedPlan))"
+          >
+            {{ loadingRefine ? '精估中…（按 float 查挂单底价）' : '按磨损精估材料价' }}
+          </button>
         </div>
 
         <div v-if="isGoldContract(selectedPlan) && isStatTrakPlan(selectedPlan)" class="plan-insight">
@@ -321,6 +343,7 @@ const contractTitle = (rarity) => {
                 </div>
                 <div class="detail-side">
                   <span>{{ currency(item.price) }}</span>
+                  <em v-if="hasFloatPremium(item)" class="base-price-note">底价 {{ currency(item.basePrice) }}</em>
                   <em>{{ fullFloat(metricValue(item, 'floatValue', 'float_value')) }}</em>
                 </div>
               </div>

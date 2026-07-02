@@ -1,6 +1,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { backfillOutcomesApi, createCatalogSyncTask } from '../api/catalog'
+import { refineFloatPricesApi } from '../api/inventory'
 import { optimizeTradeUp, persistNextTierCatalogApi } from '../api/tradeUp'
 
 const PLAN_TOP_K = 10
@@ -11,6 +12,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
   const loadingNextTier = ref(false)
   const loadingCatalog = ref(false)
   const loadingBackfill = ref(false)
+  const loadingRefine = ref(false)
   const selectedPlanIndex = ref(0)
   const catalogMissing = ref(false)
 
@@ -129,6 +131,28 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
   }
 
   // 补全某方案涉及的所有收藏品的产物档皮肤（从 BUFF 按名搜抓缺价皮肤），完成后自动重算方案。
+  // 按磨损精估一批材料的市值（每件查一次 BUFF 挂单最低价，写回 float_price），完成后自动重算方案。
+  const refineMaterialPrices = async (assetIds) => {
+    const list = (assetIds || []).filter(Boolean)
+    if (!list.length) {
+      ElMessage.warning('该方案缺少材料 asset_id，无法精估')
+      return
+    }
+    loadingRefine.value = true
+    try {
+      ElMessage.info(`正在按磨损精估 ${list.length} 件材料的市值（每件约 4 秒）…`)
+      const result = await refineFloatPricesApi(list, resolveAccountId())
+      const refined = result?.refined ?? 0
+      const rateLimited = result?.rateLimited
+      ElMessage.success(`已精估 ${refined} 件${rateLimited ? '（部分因 BUFF 限流未完成，可稍后再点）' : ''}，正在重算方案…`)
+      await optimizePlans()
+    } catch (error) {
+      ElMessage.error(String(error.message || '精估材料价失败'))
+    } finally {
+      loadingRefine.value = false
+    }
+  }
+
   const backfillOutcomes = async (collections) => {
     const list = (Array.isArray(collections) ? collections : [collections]).filter(Boolean)
     if (!list.length) {
@@ -210,6 +234,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
     loadingNextTier,
     loadingCatalog,
     loadingBackfill,
+    loadingRefine,
     catalogMissing,
     selectedPlanIndex,
     planForm,
@@ -222,6 +247,7 @@ export const usePlans = ({ inventoryState, pollTask, updateCatalogTask, accountI
     updatePlanFilter,
     optimizePlans,
     backfillOutcomes,
+    refineMaterialPrices,
     syncCatalog,
     persistNextTierCatalog,
   }
@@ -286,6 +312,8 @@ const normalizeInventoryItem = (item) => {
     ...item,
     assetId: item.assetId || item.asset_id,
     floatValue: item.floatValue ?? item.float_value,
+    floatPrice: item.floatPrice ?? item.float_price,
+    basePrice: item.basePrice ?? item.base_price,
     floatValueRaw: item.floatValueRaw || item.float_value_raw,
     imageUrl: item.imageUrl || item.image_url,
     wearName: item.wearName || item.wear_name,

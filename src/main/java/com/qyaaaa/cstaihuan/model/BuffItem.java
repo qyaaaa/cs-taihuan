@@ -15,6 +15,12 @@ public class BuffItem {
     private String assetId;
     private String name;
     private double price;
+    // 按磨损精估的市值（该件 float 对应的挂单最低价）；空则回退磨损档价。
+    @JsonProperty("float_price")
+    private Double floatPrice;
+    // 该件所在磨损档的目录底价（展示用，和精估价对照）；enrich 时填充，不落库。
+    @JsonProperty("base_price")
+    private Double basePrice;
     @JsonProperty("float_value")
     private Double floatValue;
     @JsonProperty("float_value_raw")
@@ -60,11 +66,17 @@ public class BuffItem {
 
     // 与 withCatalog 相同，但覆盖价格：用于按素材磨损档目录价计价，而不是按整皮库存地板价计价。
     public BuffItem withCatalog(CatalogSkin skin, double newPrice) {
-        return new BuffItem(assetId, name, newPrice, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
+        BuffItem copy = new BuffItem(assetId, name, newPrice, floatValue, floatValueRaw, imageUrl, wearName, skin.getCollection(), skin.getRarity(), categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
+        copy.setFloatPrice(floatPrice);
+        copy.setBasePrice(basePrice);
+        return copy;
     }
 
     public BuffItem withPrice(double newPrice) {
-        return new BuffItem(assetId, name, newPrice, floatValue, floatValueRaw, imageUrl, wearName, collection, rarity, categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
+        BuffItem copy = new BuffItem(assetId, name, newPrice, floatValue, floatValueRaw, imageUrl, wearName, collection, rarity, categoryKey, filterRarity, qualityLabel, tradable, goodsId, raw);
+        copy.setFloatPrice(floatPrice);
+        copy.setBasePrice(basePrice);
+        return copy;
     }
 
     public void setRarity(String rarity) {

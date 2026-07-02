@@ -427,11 +427,13 @@ onMounted(async () => {
           :generate-disabled-reason="planDisabledReason"
           :catalog-missing="plans.catalogMissing.value"
           :loading-backfill="plans.loadingBackfill.value"
+          :loading-refine="plans.loadingRefine.value"
           @optimize-plans="plans.optimizePlans"
           @go-data="changePage('overview')"
           @select-plan="plans.selectedPlanIndex.value = $event"
           @update-filter="plans.updatePlanFilter"
           @backfill-collection="plans.backfillOutcomes"
+          @refine-prices="plans.refineMaterialPrices"
         />
 
         <FloatCalculatorPage
