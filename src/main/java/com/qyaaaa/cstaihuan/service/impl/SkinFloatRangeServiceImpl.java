@@ -55,6 +55,7 @@ public class SkinFloatRangeServiceImpl implements SkinFloatRangeService {
                 }
                 // 旧行可能早于 image_url 字段存在，从快照回填图标。
                 backfillMissingImages();
+                backfillMissingReleaseDates();
             }
         } catch (Exception e) {
             log.warn("Skipped skin_float_range seed: {}", e.getMessage());
@@ -124,6 +125,34 @@ public class SkinFloatRangeServiceImpl implements SkinFloatRangeService {
         log.info("Backfilled skin_float_range image_url, candidateRows={}, missingBefore={}",
             Integer.valueOf(withImage.size()), Integer.valueOf(missingSkinIds.size()));
         return missingSkinIds.size();
+    }
+
+    /**
+     * 按 skin_id 匹配快照，为尚无 release_date 的行补上线日期。上游无日期的老收藏品会一直为空，属预期。
+     */
+    @Override
+    @Transactional
+    public int backfillMissingReleaseDates() {
+        Set<String> missingSkinIds = new HashSet<String>(skinFloatRangeMapper.selectMissingReleaseDateSkinIds());
+        if (missingSkinIds.isEmpty()) {
+            return 0;
+        }
+        List<SkinFloatRange> withDate = new ArrayList<SkinFloatRange>();
+        for (SkinFloatRange row : readSnapshot()) {
+            if (StringUtils.hasText(row.getSkinId()) && StringUtils.hasText(row.getReleaseDate())
+                    && missingSkinIds.contains(row.getSkinId())) {
+                withDate.add(row);
+            }
+        }
+        if (withDate.isEmpty()) {
+            return 0;
+        }
+        for (int start = 0; start < withDate.size(); start += UPDATE_BATCH_SIZE) {
+            int end = Math.min(start + UPDATE_BATCH_SIZE, withDate.size());
+            skinFloatRangeMapper.updateReleaseDatesBySkinId(withDate.subList(start, end));
+        }
+        log.info("Backfilled skin_float_range release_date, candidateRows={}", Integer.valueOf(withDate.size()));
+        return withDate.size();
     }
 
     private List<SkinFloatRange> readPreparedSnapshot() {
@@ -233,6 +262,9 @@ public class SkinFloatRangeServiceImpl implements SkinFloatRangeService {
                 collection.put("nameEn", row.getCollectionEn());
                 collection.put("items", new ArrayList<Map<String, Object>>());
                 byCollection.put(key, collection);
+            }
+            if (collection.get("releaseDate") == null && StringUtils.hasText(row.getReleaseDate())) {
+                collection.put("releaseDate", row.getReleaseDate());
             }
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> items = (List<Map<String, Object>>) collection.get("items");
