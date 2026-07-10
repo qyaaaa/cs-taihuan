@@ -95,6 +95,7 @@ const normalizeCollection = (collection) => ({
   nameEn: collection.nameEn || collection.name_en || '',
   itemCount: Number(collection.itemCount || collection.item_count || (collection.items || []).length || 0),
   rarities: collection.rarities || [],
+  releaseDate: collection.releaseDate || collection.release_date || '',
   items: collection.items || [],
 })
 
@@ -164,25 +165,27 @@ onMounted(loadCollections)
         <div class="collection-filter-row">
           <el-input v-model="collectionKeyword" clearable placeholder="搜索收藏品" />
         </div>
-        <div v-if="loading" class="collection-empty">正在加载收藏品...</div>
-        <div v-else-if="!filteredCollections.length" class="collection-empty">没有匹配的收藏品</div>
-        <template v-else>
-          <button
-            v-for="collection in filteredCollections"
-            :key="collection.key"
-            type="button"
-            class="collection-row"
-            :class="{ active: selectedCollection?.key === collection.key }"
-            @click="selectCollection(collection)"
-          >
-            <span>
-              <strong>{{ displayCollectionName(collection) }}</strong>
-              <small>{{ displayCollectionSub(collection) }}</small>
-            </span>
-            <em>{{ collection.itemCount }} 件</em>
-            <i :style="{ width: collectionBarWidth(collection) }"></i>
-          </button>
-        </template>
+        <div class="collection-list-scroll">
+          <div v-if="loading" class="collection-empty">正在加载收藏品...</div>
+          <div v-else-if="!filteredCollections.length" class="collection-empty">没有匹配的收藏品</div>
+          <template v-else>
+            <button
+              v-for="collection in filteredCollections"
+              :key="collection.key"
+              type="button"
+              class="collection-row"
+              :class="{ active: selectedCollection?.key === collection.key }"
+              @click="selectCollection(collection)"
+            >
+              <span>
+                <strong>{{ displayCollectionName(collection) }}</strong>
+                <small>{{ collection.releaseDate ? `上线 ${collection.releaseDate}` : displayCollectionSub(collection) }}</small>
+              </span>
+              <em>{{ collection.itemCount }} 件</em>
+              <i :style="{ width: collectionBarWidth(collection) }"></i>
+            </button>
+          </template>
+        </div>
       </aside>
 
       <section class="collection-detail-panel operation-panel">
@@ -190,7 +193,10 @@ onMounted(loadCollections)
           <div>
             <span class="section-kicker">{{ displayCollectionSub(selectedCollection) }}</span>
             <h2>{{ displayCollectionName(selectedCollection) }}</h2>
-            <p class="surface-note">{{ selectedCollection.itemCount }} 件产物，当前展示 {{ visibleItems.length }} 件。</p>
+            <p class="surface-note">
+              {{ selectedCollection.itemCount }} 件产物，当前展示 {{ visibleItems.length }} 件。
+              <template v-if="selectedCollection.releaseDate">上线时间 {{ selectedCollection.releaseDate }}。</template>
+            </p>
           </div>
           <div class="collection-rarity-strip">
             <span

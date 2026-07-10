@@ -14,6 +14,9 @@ public interface SkinFloatRangeService {
 
     int backfillMissingImages();
 
+    /** 为尚无上线日期的行按快照补 release_date；返回补充行数。 */
+    int backfillMissingReleaseDates();
+
     Optional<SkinFloatRange> findByName(String name);
 
     List<SkinFloatRange> search(String collection, String name, String rarity, int limit);

@@ -36,6 +36,8 @@ public class SkinFloatRange {
     // 皮肤图标 URL，来源于快照的 image 字段（按 id 从 ByMykel/CSGO-API 合并）。
     @TableField("image_url")
     private String image;
+    // 所属收藏品上线日期(YYYY-MM-DD)；来自快照 releaseDate，老收藏品上游无日期为空。
+    private String releaseDate;
     @JsonIgnore
     private String source;
     @JsonIgnore

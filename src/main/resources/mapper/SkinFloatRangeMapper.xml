@@ -3,7 +3,7 @@
 <mapper namespace="com.qyaaaa.cstaihuan.mapper.SkinFloatRangeMapper">
     <sql id="rangeColumns">
         id AS row_id, skin_id, paint_index, name_en, name_zh, base_name_en, base_name_zh,
-        weapon, rarity, min_float, max_float, collection_en, collection_zh, image_url AS image,
+        weapon, rarity, min_float, max_float, collection_en, collection_zh, image_url AS image, release_date,
         source, updated_at
     </sql>
 
@@ -38,18 +38,40 @@
           AND (image_url IS NULL OR image_url = '')
     </update>
 
+    <select id="selectMissingReleaseDateSkinIds" resultType="string">
+        SELECT skin_id
+        FROM skin_float_range
+        WHERE release_date IS NULL
+           OR release_date = ''
+    </select>
+
+    <!-- 按 skin_id 一次补多行上线日期；只更新仍缺日期的行，重复执行无副作用。 -->
+    <update id="updateReleaseDatesBySkinId">
+        UPDATE skin_float_range
+        SET release_date = CASE skin_id
+        <foreach collection="rows" item="row" separator=" ">
+            WHEN #{row.skinId} THEN #{row.releaseDate}
+        </foreach>
+        END
+        WHERE skin_id IN
+        <foreach collection="rows" item="row" open="(" separator="," close=")">
+            #{row.skinId}
+        </foreach>
+          AND (release_date IS NULL OR release_date = '')
+    </update>
+
     <insert id="insertBatch">
         INSERT INTO skin_float_range (
             skin_id, paint_index, name_en, name_zh, base_name_en, base_name_zh,
             weapon, rarity, min_float, max_float, collection_en, collection_zh,
-            image_url, source, updated_at
+            image_url, release_date, source, updated_at
         )
         VALUES
         <foreach collection="rows" item="row" separator=",">
             (
                 #{row.skinId}, #{row.paintIndex}, #{row.nameEn}, #{row.nameZh}, #{row.baseNameEn}, #{row.baseNameZh},
                 #{row.weapon}, #{row.rarity}, #{row.minFloat}, #{row.maxFloat}, #{row.collectionEn}, #{row.collectionZh},
-                #{row.image}, #{row.source}, #{row.updatedAt}
+                #{row.image}, #{row.releaseDate}, #{row.source}, #{row.updatedAt}
             )
         </foreach>
     </insert>
