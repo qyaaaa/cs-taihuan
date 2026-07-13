@@ -16,48 +16,24 @@
         FROM skin_float_range
     </select>
 
-    <select id="selectMissingImageSkinIds" resultType="string">
-        SELECT skin_id
+    <!-- 全表同步现状：skin_id + 图标 + 上线日期，供与快照做内存 diff。 -->
+    <select id="selectSyncStates" resultType="com.qyaaaa.cstaihuan.model.SkinFloatRange">
+        SELECT skin_id, image_url AS image, release_date
         FROM skin_float_range
-        WHERE image_url IS NULL
-           OR image_url = ''
+        WHERE skin_id IS NOT NULL AND skin_id != ''
     </select>
 
-    <!-- 按 skin_id 一次补多行图标；只更新仍缺图的行，重复执行无副作用。 -->
-    <update id="updateImagesBySkinId">
+    <!-- 按 skin_id 批量同步图标与上线日期为快照值（快照是唯一真相源，修正会随启动传播）。 -->
+    <update id="syncFieldsBySkinId">
         UPDATE skin_float_range
         SET image_url = CASE skin_id
-        <foreach collection="rows" item="row" separator=" ">
-            WHEN #{row.skinId} THEN #{row.image}
-        </foreach>
+        <foreach collection="rows" item="row" separator=" "> WHEN #{row.skinId} THEN #{row.image}</foreach>
+        END,
+            release_date = CASE skin_id
+        <foreach collection="rows" item="row" separator=" "> WHEN #{row.skinId} THEN #{row.releaseDate}</foreach>
         END
         WHERE skin_id IN
-        <foreach collection="rows" item="row" open="(" separator="," close=")">
-            #{row.skinId}
-        </foreach>
-          AND (image_url IS NULL OR image_url = '')
-    </update>
-
-    <select id="selectMissingReleaseDateSkinIds" resultType="string">
-        SELECT skin_id
-        FROM skin_float_range
-        WHERE release_date IS NULL
-           OR release_date = ''
-    </select>
-
-    <!-- 按 skin_id 一次补多行上线日期；只更新仍缺日期的行，重复执行无副作用。 -->
-    <update id="updateReleaseDatesBySkinId">
-        UPDATE skin_float_range
-        SET release_date = CASE skin_id
-        <foreach collection="rows" item="row" separator=" ">
-            WHEN #{row.skinId} THEN #{row.releaseDate}
-        </foreach>
-        END
-        WHERE skin_id IN
-        <foreach collection="rows" item="row" open="(" separator="," close=")">
-            #{row.skinId}
-        </foreach>
-          AND (release_date IS NULL OR release_date = '')
+        <foreach collection="rows" item="row" open="(" separator="," close=")">#{row.skinId}</foreach>
     </update>
 
     <insert id="insertBatch">

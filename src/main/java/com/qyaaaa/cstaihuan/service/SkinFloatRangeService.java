@@ -12,10 +12,8 @@ public interface SkinFloatRangeService {
 
     int importMissingFromSnapshot();
 
-    int backfillMissingImages();
-
-    /** 为尚无上线日期的行按快照补 release_date；返回补充行数。 */
-    int backfillMissingReleaseDates();
+    /** 按 skin_id 把图标/上线日期同步为快照值（快照非空才覆盖）；返回更新行数。 */
+    int syncSnapshotFields();
 
     Optional<SkinFloatRange> findByName(String name);
 

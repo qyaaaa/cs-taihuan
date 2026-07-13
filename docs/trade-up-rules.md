@@ -99,23 +99,29 @@ StatTrak 是独立产物池：
 
 ## 5. 磨损计算
 
-产物磨损不是随机值，而是由输入素材的算术平均磨损决定。输入平均磨损使用实际槽位数量作为分母：常规合同除以 10，五合一除以 5。
+产物磨损不是随机值，而是由输入素材的**归一化平均磨损**决定（与 BUFF 汰换模拟同口径）。
+
+每件输入先按**它自己皮肤的完整磨损范围**（paint 范围，来自 `skin_float_range` 基准库）归一化到 `[0,1]`，再求平均。分母为实际槽位数：常规合同 10，五合一 5。
 
 ```text
-AvgFloat = sum(inputFloat) / contractSize
-常规级 AvgFloat = sum(inputFloat) / 10
-隐秘合金 AvgFloat = sum(inputFloat) / 5
+Norm_i  = (inputFloat_i - MinFloat_in_i) / (MaxFloat_in_i - MinFloat_in_i)
+AvgNorm = sum(Norm_i) / contractSize
 ```
 
-产出磨损再按该产物皮肤自身的磨损上下限做线性映射：
+产出磨损按该产物皮肤**自身的完整磨损范围**缩放：
 
 ```text
-OutcomeFloat = AvgFloat * (MaxFloat_out - MinFloat_out) + MinFloat_out
+OutcomeFloat = MinFloat_out + AvgNorm * (MaxFloat_out - MinFloat_out)
 ```
 
-例如二西莫夫这类固定磨损区间的产物，会使用它自己的 `MinFloat_out` 和 `MaxFloat_out`，而不是使用输入素材的磨损上下限。
+要点：
 
-如果计算结果低于目标最小磨损，按最小磨损处理；如果高于最大磨损，按最大磨损处理。
+- 输入/输出皮肤的 Min/Max Float 一律取 `skin_float_range` 基准库的权威 paint 范围（不是 catalog 磨损档行的子区间）；基准库查不到时回退用原始磨损（等价于假设 `[0,1]`）。
+- 皮肤名跨数据源匹配用强归一化键（去磨损后缀 / StatTrak·纪念品标记 / 空格，并处理 CZ75自动型↔CZ75、M4A1消音型↔消音版 等武器别名），见 `WearSuffix.toRangeMatchKey`。
+- 该公式已用 BUFF 汰换模拟实测对齐：同一批材料的产出磨损与 BUFF 显示一致到小数第 7 位。
+- 产物名字上的磨损档（崭新/略磨/…）由 `OutcomeFloat` 的绝对值直接判定（exterior 是绝对磨损的固定函数），不受 catalog 档位是否齐全影响。
+
+历史注：旧实现用「原始平均 + 目标区间线性映射」，对磨损范围不是 `[0,1]` 的皮肤会得出与 BUFF 不一致的结果，已废弃。
 
 ## 6. 价格区间
 
@@ -128,6 +134,35 @@ OutcomeFloat = AvgFloat * (MaxFloat_out - MinFloat_out) + MinFloat_out
 - Battle-Scarred / 战痕累累
 
 后端先计算产物的精确 `OutcomeFloat`，再在该底板的多个价格行中选择覆盖该磨损区间的价格。若没有精确命中，选择与目标磨损最近的价格行作为兜底。
+
+### 输入素材计价（按磨损精估）
+
+材料成本不是整皮地板价，取值优先级：
+
+```text
+float_price（按磨损精估市值） > 该件磨损档的 catalog 档价 > 库存快照价
+```
+
+`float_price` 的口径：该件 `float` 所在 BUFF 磨损子区间内「本段或更好段」的最低挂单价（`sell_order` 接口 + paintwear 过滤）。同一磨损档内低磨损有明显溢价（如略磨 0.09 的 StatTrak 材料，档价 ¥46、真实挂单底价 ¥88），只按档地板价会低估投入、虚高 EV。
+
+BUFF 磨损子区间为**固定切点表 + 皮肤实际磨损范围裁剪**（实测归纳自 `goods/info.paintwear_choices`，特殊皮肤如头骨粉碎者的两段划分可由裁剪自然得出）：
+
+| 档 | 切点 |
+| --- | --- |
+| 崭新 | 0.01 / 0.02 / 0.03 / 0.04 |
+| 略磨 | 0.08 / 0.09 / 0.10 / 0.11 |
+| 久经 | 0.18 / 0.21 / 0.24 / 0.27 |
+| 破损 | 0.39 / 0.40 / 0.41 / 0.42 |
+| 战痕 | 0.50 / 0.63 / 0.76 / 0.90 |
+
+精估的获取与节流（`buff.float-refine.*` 配置）：
+
+- 拉取库存时：先按 `asset_id` **结转**上一快照的精估价（零请求），再提交独立后台线程 `[float-refine]` 全量精估；被限流则冷却（默认 120s）自动续跑。
+- 请求去重：档尾「底价段」的件直接回填 catalog 档价（零请求）；其余按 `(goods_id, 磨损段)` 分组，每组一次查询、组内共用（实测 751 件去重后约 150 次查询）。
+- 兜底：方案详情页「按磨损精估材料价」按钮可对单个方案的材料即时精估；端点 `POST /api/accounts/{id}/inventory/refine-float-prices`。
+- 展示：方案材料行同时显示计价（磨损价）与 `base_price`（档底价）对照。
+
+产出侧目前仍按档价（细分溢价可用下述 `output-price-bands` 手工配置），是刻意保守：产出是期望卖价，低估比高估安全。
 
 BUFF 的交易页还会在同一个大磨损档内继续细分价格，例如久经沙场常见会拆成：
 
