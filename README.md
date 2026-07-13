@@ -16,6 +16,10 @@
 - 目录数据从 BUFF/数据库生成并落库到 `catalog_skin`，方案计算不再依赖本地 `catalog.json`。
 - 方案计算支持 EV、利润、ROI、投入成本、档位排序，以及常规 10 合 1 与 `covert -> gold` 五合一规则。
 - `covert -> gold` 会区分普通和 StatTrak：普通可匹配刀/手套，StatTrak 只允许可通向暗金刀的隐秘下级；暗金手套下级不可汰换。
+- 产出磨损用**归一化平均**公式（与 BUFF 汰换模拟同口径，实测一致到小数第 7 位），磨损档名按绝对磨损直接判定。
+- 材料按**磨损精估市值**计价（BUFF 挂单 + 磨损子区间过滤）：拉库存后后台线程自动精估、限流冷却续跑；方案页展示「磨损价 + 档底价」两个价，另有按方案兜底精估按钮。
+- 方案产物池不全时可一键**补全收藏品产物**（从内置全量名单找缺口、按名搜 BUFF 补抓全部磨损档）。
+- **收藏品图鉴**页展示 90+ 收藏品的全部产物、皮肤图标、Min/Max Float 与收藏品上线时间；数据来自内置离线快照，启动自动增量导入。
 
 ## 使用流程图
 
@@ -59,9 +63,12 @@ npm run dev
 http://localhost:5173
 ```
 
-## 数据库配置
+## 数据库与基准数据
 
-默认使用 MySQL 8，库名为 `cs_taihuan`，Flyway 管理表结构。
+默认使用 MySQL 8，库名为 `cs_taihuan`。**Flyway 只管理表结构（DDL），不管数据**：
+
+- 业务数据（库存快照、目录价格、精估价）由运行时抓取/计算落库。
+- 基准数据（皮肤磨损范围、图标、收藏品上线时间）内置在 `src/main/resources/data/skin-float-range.json` 离线快照中，应用启动时自动 seed / 增量补新行（`SkinFloatRangeServiceImpl.seedIfEmpty`）。更新基准数据改快照文件即可，无需写 Flyway 迁移；改动前先备份到 `data/backup/`。
 
 配置文件位置：
 
@@ -117,6 +124,8 @@ flowchart LR
 - `库存`：读取数据库中最近一次保存的武器库存，支持分页。
 - `方案`：生成并查看前十推荐方案，支持按 EV、利润、ROI、投入成本、档位和合成类型筛选排序。
 - `数据`：扫码登录或导入 BUFF 会话、抓取库存、强制刷新、同步目录数据、查看任务日志。
+- `特殊磨损计算器`：按目标产物磨损反推下级素材平均磨损。
+- `收藏品`：收藏品图鉴，按收藏品浏览全部产物、皮肤磨损范围与上线时间，支持搜索和档位筛选。
 - `账号切换`：侧边栏可维护多个 BUFF 账号；点「新增」只打开登录对话框，扫码成功或保存 Cookie 后才创建账号。Cookie、库存快照和方案按账号隔离，`catalog_skin` 市场目录全局共享。
 
 ## 常用接口
@@ -154,11 +163,18 @@ flowchart LR
 库存和方案：
 
 - `POST /api/accounts/{accountId}/inventory/page`
+- `POST /api/accounts/{accountId}/inventory/refine-float-prices`（按磨损精估指定材料市值）
 - `POST /api/accounts/{accountId}/trade-up/next-tier/persist`
 - `POST /api/accounts/{accountId}/trade-up/optimize`
+- `POST /api/accounts/{accountId}/catalog/backfill-outcomes`（补全收藏品产物档）
 - `POST /api/buff/inventory/page`
 - `POST /api/trade-up/next-tier/persist`
 - `POST /api/trade-up/optimize`
+
+基准库与图鉴：
+
+- `GET /api/skin-float-range/collections`（收藏品图鉴：产物、磨损范围、上线时间）
+- `POST /api/skin-float-range/import`、`GET /api/skin-float-range/stats`
 
 ## 注意事项
 

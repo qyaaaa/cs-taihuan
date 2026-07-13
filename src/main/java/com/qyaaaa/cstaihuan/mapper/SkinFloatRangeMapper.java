@@ -11,15 +11,11 @@ public interface SkinFloatRangeMapper extends BaseMapper<SkinFloatRange> {
 
     List<String> selectSkinIds();
 
-    List<String> selectMissingImageSkinIds();
-
-    int updateImagesBySkinId(@Param("rows") List<SkinFloatRange> rows);
-
-    List<String> selectMissingReleaseDateSkinIds();
-
-    int updateReleaseDatesBySkinId(@Param("rows") List<SkinFloatRange> rows);
-
     int insertBatch(@Param("rows") List<SkinFloatRange> rows);
+
+    List<SkinFloatRange> selectSyncStates();
+
+    int syncFieldsBySkinId(@Param("rows") List<SkinFloatRange> rows);
 
     SkinFloatRange selectByBaseName(@Param("key") String key);
 

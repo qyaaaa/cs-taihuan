@@ -49,13 +49,16 @@ public class SkinFloatRangeServiceImpl implements SkinFloatRangeService {
                 int imported = importFromSnapshot();
                 log.info("Seeded skin_float_range from snapshot, count={}", Integer.valueOf(imported));
             } else {
-                int imported = importMissingFromSnapshot();
+                // 快照只解析一次，追加新行与字段同步共用。
+                List<SkinFloatRange> snapshot = readPreparedSnapshot();
+                int imported = importMissingRows(snapshot);
                 if (imported > 0) {
                     log.info("Added missing skin_float_range rows from snapshot, count={}", Integer.valueOf(imported));
                 }
-                // 旧行可能早于 image_url 字段存在，从快照回填图标。
-                backfillMissingImages();
-                backfillMissingReleaseDates();
+                int synced = syncSnapshotFields(snapshot);
+                if (synced > 0) {
+                    log.info("Synced skin_float_range fields from snapshot, updatedRows={}", Integer.valueOf(synced));
+                }
             }
         } catch (Exception e) {
             log.warn("Skipped skin_float_range seed: {}", e.getMessage());
@@ -85,10 +88,13 @@ public class SkinFloatRangeServiceImpl implements SkinFloatRangeService {
     @Override
     @Transactional
     public int importMissingFromSnapshot() {
-        List<SkinFloatRange> rows = readPreparedSnapshot();
+        return importMissingRows(readPreparedSnapshot());
+    }
+
+    private int importMissingRows(List<SkinFloatRange> snapshotRows) {
         Set<String> existingSkinIds = new HashSet<String>(skinFloatRangeMapper.selectSkinIds());
         List<SkinFloatRange> missingRows = new ArrayList<SkinFloatRange>();
-        for (SkinFloatRange row : rows) {
+        for (SkinFloatRange row : snapshotRows) {
             if (StringUtils.hasText(row.getSkinId()) && !existingSkinIds.contains(row.getSkinId())) {
                 missingRows.add(row);
             }
@@ -97,62 +103,45 @@ public class SkinFloatRangeServiceImpl implements SkinFloatRangeService {
         return missingRows.size();
     }
 
-    /**
-     * 按 skin_id 匹配快照，为尚无 image_url 的行补图标。全部补齐后再次调用不会产生变化。
-     */
     @Override
     @Transactional
-    public int backfillMissingImages() {
-        Set<String> missingSkinIds = new HashSet<String>(skinFloatRangeMapper.selectMissingImageSkinIds());
-        if (missingSkinIds.isEmpty()) {
-            return 0;
-        }
-        List<SkinFloatRange> withImage = new ArrayList<SkinFloatRange>();
-        for (SkinFloatRange row : readSnapshot()) {
-            if (StringUtils.hasText(row.getSkinId()) && StringUtils.hasText(row.getImage())
-                    && missingSkinIds.contains(row.getSkinId())) {
-                withImage.add(row);
-            }
-        }
-        if (withImage.isEmpty()) {
-            return 0;
-        }
-        // 分批用单条多行 UPDATE 补图，避免逐行更新的数据库往返开销。
-        for (int start = 0; start < withImage.size(); start += UPDATE_BATCH_SIZE) {
-            int end = Math.min(start + UPDATE_BATCH_SIZE, withImage.size());
-            skinFloatRangeMapper.updateImagesBySkinId(withImage.subList(start, end));
-        }
-        log.info("Backfilled skin_float_range image_url, candidateRows={}, missingBefore={}",
-            Integer.valueOf(withImage.size()), Integer.valueOf(missingSkinIds.size()));
-        return missingSkinIds.size();
+    public int syncSnapshotFields() {
+        return syncSnapshotFields(readSnapshot());
     }
 
     /**
-     * 按 skin_id 匹配快照，为尚无 release_date 的行补上线日期。上游无日期的老收藏品会一直为空，属预期。
+     * 以快照为唯一真相源，把图标与上线日期同步到已有行：内存 diff 后只更新有差异的行，
+     * 全部一致时零次 UPDATE（稳态一次全表轻查询即收敛）。快照值为空时保留 DB 现值，不清空。
      */
-    @Override
-    @Transactional
-    public int backfillMissingReleaseDates() {
-        Set<String> missingSkinIds = new HashSet<String>(skinFloatRangeMapper.selectMissingReleaseDateSkinIds());
-        if (missingSkinIds.isEmpty()) {
-            return 0;
-        }
-        List<SkinFloatRange> withDate = new ArrayList<SkinFloatRange>();
-        for (SkinFloatRange row : readSnapshot()) {
-            if (StringUtils.hasText(row.getSkinId()) && StringUtils.hasText(row.getReleaseDate())
-                    && missingSkinIds.contains(row.getSkinId())) {
-                withDate.add(row);
+    private int syncSnapshotFields(List<SkinFloatRange> snapshotRows) {
+        Map<String, SkinFloatRange> snapshotBySkinId = new java.util.HashMap<String, SkinFloatRange>();
+        for (SkinFloatRange row : snapshotRows) {
+            if (StringUtils.hasText(row.getSkinId())) {
+                snapshotBySkinId.put(row.getSkinId(), row);
             }
         }
-        if (withDate.isEmpty()) {
-            return 0;
+        List<SkinFloatRange> toUpdate = new ArrayList<SkinFloatRange>();
+        for (SkinFloatRange db : skinFloatRangeMapper.selectSyncStates()) {
+            SkinFloatRange snap = snapshotBySkinId.get(db.getSkinId());
+            if (snap == null) {
+                continue;
+            }
+            String targetImage = StringUtils.hasText(snap.getImage()) ? snap.getImage() : db.getImage();
+            String targetDate = StringUtils.hasText(snap.getReleaseDate()) ? snap.getReleaseDate() : db.getReleaseDate();
+            if (java.util.Objects.equals(targetImage, db.getImage()) && java.util.Objects.equals(targetDate, db.getReleaseDate())) {
+                continue;
+            }
+            SkinFloatRange update = new SkinFloatRange();
+            update.setSkinId(db.getSkinId());
+            update.setImage(targetImage);
+            update.setReleaseDate(targetDate);
+            toUpdate.add(update);
         }
-        for (int start = 0; start < withDate.size(); start += UPDATE_BATCH_SIZE) {
-            int end = Math.min(start + UPDATE_BATCH_SIZE, withDate.size());
-            skinFloatRangeMapper.updateReleaseDatesBySkinId(withDate.subList(start, end));
+        for (int startIdx = 0; startIdx < toUpdate.size(); startIdx += UPDATE_BATCH_SIZE) {
+            int endIdx = Math.min(startIdx + UPDATE_BATCH_SIZE, toUpdate.size());
+            skinFloatRangeMapper.syncFieldsBySkinId(toUpdate.subList(startIdx, endIdx));
         }
-        log.info("Backfilled skin_float_range release_date, candidateRows={}", Integer.valueOf(withDate.size()));
-        return withDate.size();
+        return toUpdate.size();
     }
 
     private List<SkinFloatRange> readPreparedSnapshot() {
